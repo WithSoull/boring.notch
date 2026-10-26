@@ -19,24 +19,35 @@ struct HeaderStatusButtons: View {
             if showVPNStatus && vpn.status != .notFound {
                 Button(action: vpn.toggle) {
                     HStack(spacing: 4) {
-                        switch vpn.status {
-                        case .connected:
-                            Text(vpn.flag ?? "🌐")
-                            Text(vpn.countryCode ?? "VPN")
+                        if let error = vpn.lastError {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text(error)
                                 .foregroundStyle(.white)
-                        case .connecting, .disconnecting:
-                            ProgressView()
-                                .controlSize(.mini)
-                            Text("VPN")
-                        default:
-                            Image(systemName: "shield.slash")
-                            Text("VPN")
+                        } else {
+                            switch vpn.status {
+                            case .connected:
+                                Text(vpn.flag ?? "🌐")
+                                Text(vpn.countryCode ?? "VPN")
+                                    .foregroundStyle(.white)
+                            case .connecting, .disconnecting:
+                                ProgressView()
+                                    .controlSize(.mini)
+                                Text("VPN")
+                            default:
+                                Image(systemName: "shield.slash")
+                                Text("VPN")
+                            }
                         }
                     }
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .padding(.horizontal, 8)
                     .frame(height: 24)
-                    .background(Capsule().fill(vpn.status == .connected ? Color.green.opacity(0.18) : Color.white.opacity(0.08)))
+                    .background(Capsule().fill(
+                        vpn.lastError != nil ? Color.red.opacity(0.2)
+                            : vpn.status == .connected ? Color.green.opacity(0.18) : Color.white.opacity(0.08)
+                    ))
+                    .animation(.smooth(duration: 0.25), value: vpn.lastError)
                 }
                 .buttonStyle(PlainButtonStyle())
                 .help(vpn.status == .connected ? "Disconnect VPN" : "Connect VPN")

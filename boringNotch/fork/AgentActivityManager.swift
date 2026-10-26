@@ -57,6 +57,8 @@ struct AgentSession: Identifiable, Equatable {
 
     /// Deep link that opens this chat in the agent's desktop app.
     var chatURL: URL? {
+        // Claude's desktop app only knows its own ids; a terminal session has none.
+        if source == .claude && chatID.isEmpty { return nil }
         let id = chatID.isEmpty ? sessionID : chatID
         guard id != "unknown" else { return nil }
         let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
@@ -74,6 +76,8 @@ final class AgentActivityManager: ObservableObject {
     @Published private(set) var sessions: [AgentSession] = []
     /// Short-lived banner for the closed notch.
     @Published private(set) var banner: AgentSession?
+    /// When each agent last reported an event since launch; shown in Settings as hook diagnostics.
+    @Published private(set) var lastEventAt: [AgentSession.Source: Date] = [:]
 
     private var bannerTask: Task<Void, Never>?
     private var amphetamineStopTask: Task<Void, Never>?
@@ -103,10 +107,11 @@ final class AgentActivityManager: ObservableObject {
         sessions.contains { $0.state == .working }
     }
 
-    func openChat(_ session: AgentSession) {
-        if let url = session.chatURL {
-            NSWorkspace.shared.open(url)
-        }
+    /// Opens the session's chat in its desktop app; false when there's no link (e.g. a Claude session started in a terminal).
+    @discardableResult
+    func openChat(_ session: AgentSession) -> Bool {
+        guard let url = session.chatURL else { return false }
+        return NSWorkspace.shared.open(url)
     }
 
     func handle(url: URL) {
@@ -117,6 +122,7 @@ final class AgentActivityManager: ObservableObject {
         guard let source = AgentSession.Source(rawValue: query["src"] ?? ""),
               let event = query["event"], !event.isEmpty
         else { return }
+        lastEventAt[source] = Date()
 
         apply(
             event: event,

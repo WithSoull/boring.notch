@@ -240,6 +240,15 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         }
     }
 
+    @objc func agentHooksInstalled(with reply: @escaping (_ claude: Bool, _ codex: Bool) -> Void) {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        func references(_ relativePath: String, source: String) -> Bool {
+            guard let text = try? String(contentsOf: home.appendingPathComponent(relativePath), encoding: .utf8) else { return false }
+            return text.contains("agent-hook.sh' \(source)")
+        }
+        reply(references(".claude/settings.json", source: "claude"), references(".codex/hooks.json", source: "codex"))
+    }
+
     private static func devServers() -> [DevServer] {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")

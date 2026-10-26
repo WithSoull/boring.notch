@@ -25,6 +25,8 @@ final class VPNManager: ObservableObject {
     @Published private(set) var status: Status = .unknown
     /// ISO 3166 alpha-2 code of the current public IP, e.g. "NL".
     @Published private(set) var countryCode: String?
+    /// Short error after a failed connect/disconnect; cleared after a few seconds or on the next attempt.
+    @Published private(set) var lastError: String?
 
     private var pollTimer: Timer?
     private var countryTimer: Timer?
@@ -64,11 +66,17 @@ final class VPNManager: ObservableObject {
         guard !isBusy else { return }
         let connect = status != .connected && status != .connecting
         isBusy = true
+        lastError = nil
         status = connect ? .connecting : .disconnecting
         Task {
-            _ = await XPCHelperClient.shared.setVPNConnected(serviceName: Defaults[.vpnServiceName], connected: connect)
+            let succeeded = await XPCHelperClient.shared.setVPNConnected(serviceName: Defaults[.vpnServiceName], connected: connect)
             isBusy = false
             refresh()
+            guard !succeeded else { return }
+            let message = connect ? String(localized: "Couldn't connect") : String(localized: "Couldn't disconnect")
+            lastError = message
+            try? await Task.sleep(for: .seconds(4))
+            if lastError == message { lastError = nil }
         }
     }
 

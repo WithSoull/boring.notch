@@ -64,11 +64,11 @@ final class DevServersManager: ObservableObject {
         }
     }
 
-    func stop(_ server: DevServer) {
-        Task {
-            _ = await XPCHelperClient.shared.stopDevServer(pid: server.pid)
-            try? await Task.sleep(for: .milliseconds(500))
-            refresh()
-        }
+    /// Sends SIGTERM through the helper; returns false if the process couldn't be signalled.
+    func stop(_ server: DevServer) async -> Bool {
+        let succeeded = await XPCHelperClient.shared.stopDevServer(pid: server.pid)
+        try? await Task.sleep(for: .milliseconds(500))
+        refresh()
+        return succeeded
     }
 }

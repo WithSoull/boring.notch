@@ -161,6 +161,7 @@ struct AgentsView: View {
 struct AgentSessionRow: View {
     let session: AgentSession
     @State private var hovering = false
+    @State private var errorMessage: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -178,10 +179,13 @@ struct AgentSessionRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if hovering && !session.cwd.isEmpty {
+            if let errorMessage {
+                RowErrorText(message: errorMessage)
+            } else if hovering && !session.cwd.isEmpty {
                 Button {
                     Task {
-                        _ = await XPCHelperClient.shared.openFolder(path: session.cwd, withApplication: Defaults[.agentFolderApp])
+                        let opened = await XPCHelperClient.shared.openFolder(path: session.cwd, withApplication: Defaults[.agentFolderApp])
+                        if !opened { await showError(String(localized: "Couldn't open folder")) }
                     }
                 } label: {
                     Image(systemName: "folder")
@@ -204,8 +208,34 @@ struct AgentSessionRow: View {
         .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(hovering ? 0.1 : 0.06)))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { AgentActivityManager.shared.openChat(session) }
+        .onTapGesture {
+            if !AgentActivityManager.shared.openChat(session) {
+                Task { await showError(String(localized: "No chat link")) }
+            }
+        }
         .help("Open chat in \(session.source.displayName)")
+    }
+
+    @MainActor private func showError(_ message: String) async {
+        errorMessage = message
+        try? await Task.sleep(for: .seconds(3))
+        if errorMessage == message { errorMessage = nil }
+    }
+}
+
+/// Short red message shown in place of a row's trailing content after a failed action.
+private struct RowErrorText: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text(message)
+        }
+        .font(.caption2)
+        .foregroundStyle(.red)
+        .lineLimit(1)
+        .transition(.opacity)
     }
 }
 
@@ -289,6 +319,7 @@ struct WorkingAgentsActivity: View {
 struct DevServerRow: View {
     let server: DevServer
     @State private var hovering = false
+    @State private var errorMessage: String?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -307,9 +338,17 @@ struct DevServerRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if hovering {
+            if let errorMessage {
+                RowErrorText(message: errorMessage)
+            } else if hovering {
                 Button {
-                    DevServersManager.shared.stop(server)
+                    Task {
+                        guard !(await DevServersManager.shared.stop(server)) else { return }
+                        let message = String(localized: "Couldn't stop")
+                        errorMessage = message
+                        try? await Task.sleep(for: .seconds(3))
+                        if errorMessage == message { errorMessage = nil }
+                    }
                 } label: {
                     Image(systemName: "stop.circle")
                         .foregroundStyle(.red)

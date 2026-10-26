@@ -28,5 +28,7 @@ import Foundation
     // Local dev servers: listening TCP ports of user processes (JSON-encoded [DevServer])
     func listDevServers(with reply: @escaping (Data?) -> Void)
     func stopDevServer(_ pid: Int32, with reply: @escaping (Bool) -> Void)
+    // Whether ~/.claude/settings.json and ~/.codex/hooks.json reference agent-hook.sh
+    func agentHooksInstalled(with reply: @escaping (_ claude: Bool, _ codex: Bool) -> Void)
 }
 

@@ -55,6 +55,9 @@ struct SnippetsSettings: View {
     }
 }
 
+/// Where the hook commands expect the app; the hooks call the script inside this bundle.
+private let installedAppPath = "/Applications/Boring Notch.app"
+
 struct AgentsAndStatusSettings: View {
     @ObservedObject private var amphetamine = AmphetamineManager.shared
     @Default(.vpnServiceName) private var vpnServiceName
@@ -62,7 +65,7 @@ struct AgentsAndStatusSettings: View {
     @State private var copiedClaude = false
     @State private var copiedCodex = false
 
-    private let hookPath = "/Applications/Boring Notch.app/Contents/Resources/agent-hook.sh"
+    private let hookPath = installedAppPath + "/Contents/Resources/agent-hook.sh"
 
     var body: some View {
         Form {
@@ -124,6 +127,8 @@ struct AgentsAndStatusSettings: View {
             } footer: {
                 Text("Hooks call the script bundled with this app, which reports events back via boringnotch:// links. Click a session in the Agents tab to open its chat.")
             }
+
+            AgentHooksDiagnostics()
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Agents & Status")
@@ -152,5 +157,79 @@ struct AgentsAndStatusSettings: View {
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+}
+
+/// Settings section that tells why no agent sessions show up: app location, hook configs, last event per agent.
+private struct AgentHooksDiagnostics: View {
+    @ObservedObject private var agents = AgentActivityManager.shared
+    @State private var installed: (claude: Bool, codex: Bool)?
+
+    var body: some View {
+        Section {
+            if Bundle.main.bundlePath != installedAppPath {
+                row(ok: false, "App is not in /Applications", detail: "Hooks point to the copy at \(installedAppPath)")
+            }
+            ForEach([AgentSession.Source.claude, .codex], id: \.self) { source in
+                HStack {
+                    AgentSourceBadge(source: source, size: 16)
+                    Text(source.displayName)
+                    Spacer()
+                    status(for: source)
+                }
+            }
+        } header: {
+            HStack {
+                Text("Hook diagnostics")
+                Spacer()
+                Button("Recheck") { Task { await check() } }
+                    .buttonStyle(.borderless)
+            }
+        } footer: {
+            Text("Codex runs new hooks only after you approve them once in Codex. Events are counted since Boring Notch launched.")
+        }
+        .task { await check() }
+    }
+
+    @ViewBuilder
+    private func status(for source: AgentSession.Source) -> some View {
+        let configured = source == .claude ? installed?.claude : installed?.codex
+        TimelineView(.periodic(from: .now, by: 5)) { context in
+            if let last = agents.lastEventAt[source] {
+                label(ok: true, String(localized: "Last event \(compactDuration(context.date.timeIntervalSince(last))) ago"))
+            } else if configured == false {
+                label(ok: false, source == .claude
+                    ? String(localized: "Hooks not found in ~/.claude/settings.json")
+                    : String(localized: "Hooks not found in ~/.codex/hooks.json"))
+            } else if configured == true {
+                label(ok: nil, String(localized: "Hooks installed, no events yet"))
+            } else {
+                label(ok: nil, String(localized: "Checking…"))
+            }
+        }
+    }
+
+    private func label(ok: Bool?, _ text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: ok == true ? "checkmark.circle.fill" : ok == false ? "xmark.circle.fill" : "circle.dashed")
+                .foregroundStyle(ok == true ? .green : ok == false ? .red : .secondary)
+            Text(text)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func row(ok: Bool, _ title: String, detail: String) -> some View {
+        HStack {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+            VStack(alignment: .leading) {
+                Text(title)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func check() async {
+        installed = await XPCHelperClient.shared.agentHooksInstalled()
     }
 }

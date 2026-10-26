@@ -308,6 +308,22 @@ final class XPCHelperClient: NSObject {
         }
     }
 
+    /// Whether the Claude and Codex hook configs reference this app's agent-hook.sh; nil if the helper is unavailable.
+    nonisolated func agentHooksInstalled() async -> (claude: Bool, codex: Bool)? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.agentHooksInstalled { claude, codex in
+                    continuation.resume(returning: (claude, codex))
+                }
+            }
+        } catch {
+            return nil
+        }
+    }
+
     nonisolated func stopDevServer(pid: Int32) async -> Bool {
         do {
             let service = await MainActor.run {
