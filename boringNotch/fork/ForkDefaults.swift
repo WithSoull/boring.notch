@@ -26,7 +26,6 @@ extension Defaults.Keys {
 
     // Snippets
     static let snippets = Key<[Snippet]>("snippets", default: [])
-    static let clipboardHistoryEnabled = Key<Bool>("clipboardHistoryEnabled", default: true)
 
     // Agents
     static let showAgentBanners = Key<Bool>("showAgentBanners", default: true)

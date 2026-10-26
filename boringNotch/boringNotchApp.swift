@@ -371,8 +371,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        ClipboardHistoryManager.shared.start()
-
         KeyboardShortcuts.onKeyDown(for: .openSnippets) { [weak self] in
             guard let self else { return }
             let mouseLocation = NSEvent.mouseLocation
