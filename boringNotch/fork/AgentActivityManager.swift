@@ -57,13 +57,15 @@ struct AgentSession: Identifiable, Equatable {
 
     /// Deep link that opens this chat in the agent's desktop app.
     var chatURL: URL? {
-        // Claude's desktop app only knows its own ids; a terminal session has none.
-        if source == .claude && chatID.isEmpty { return nil }
         let id = chatID.isEmpty ? sessionID : chatID
         guard id != "unknown" else { return nil }
         let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
         switch source {
-        case .claude: return URL(string: "claude://code/continue?session=\(encoded)&source=boringnotch")
+        case .claude:
+            // Desktop sessions open by the app's own id; a terminal session is imported into the app by its CLI id.
+            return chatID.isEmpty
+                ? URL(string: "claude://resume?session=\(encoded)&source=boringnotch")
+                : URL(string: "claude://code/continue?session=\(encoded)&source=boringnotch")
         case .codex: return URL(string: "codex://threads/\(encoded)")
         }
     }
