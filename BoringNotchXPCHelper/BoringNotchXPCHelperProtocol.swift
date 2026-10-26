@@ -30,6 +30,10 @@ import Foundation
     func stopDevServer(_ pid: Int32, with reply: @escaping (Bool) -> Void)
     // Whether ~/.claude/settings.json and ~/.codex/hooks.json reference agent-hook.sh
     func agentHooksInstalled(with reply: @escaping (_ claude: Bool, _ codex: Bool) -> Void)
+    // Bluetooth keyboard/headphone batteries (JSON-encoded [PeripheralBattery]) and default input mute (JSON-encoded MicrophoneReading)
+    func peripheralBatteries(with reply: @escaping (Data?) -> Void)
+    func microphoneStatus(with reply: @escaping (Data?) -> Void)
+    func toggleMicrophone(with reply: @escaping (Data?) -> Void)
 }
 
 /*

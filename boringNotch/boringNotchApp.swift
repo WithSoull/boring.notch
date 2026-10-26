@@ -371,6 +371,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        DeviceStatusManager.shared.start()
         AgentActivityManager.shared.resumeAfterLaunch()
 
         KeyboardShortcuts.onKeyDown(for: .openSnippets) { [weak self] in

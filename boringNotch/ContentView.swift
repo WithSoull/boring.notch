@@ -246,6 +246,12 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if vm.notchState == .closed && !vm.hideOnClosed {
+                MicrophoneClosedIndicator()
+                    .offset(y: vm.effectiveClosedNotchHeight + 4)
+            }
+        }
         .padding(.bottom, 8)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .compositingGroup()

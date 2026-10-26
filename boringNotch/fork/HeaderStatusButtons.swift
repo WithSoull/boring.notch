@@ -16,6 +16,7 @@ struct HeaderStatusButtons: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            DeviceHeaderControls()
             if showVPNStatus && vpn.status != .notFound {
                 Button(action: vpn.toggle) {
                     HStack(spacing: 4) {
