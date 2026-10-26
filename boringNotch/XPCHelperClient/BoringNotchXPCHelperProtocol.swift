@@ -28,5 +28,8 @@ import Foundation
     // Local dev servers: listening TCP ports of user processes (JSON-encoded [DevServer])
     func listDevServers(with reply: @escaping (Data?) -> Void)
     func stopDevServer(_ pid: Int32, with reply: @escaping (Bool) -> Void)
+    func peripheralBatteries(with reply: @escaping (Data?) -> Void)
+    func microphoneStatus(with reply: @escaping (Data?) -> Void)
+    func toggleMicrophone(with reply: @escaping (Data?) -> Void)
 }
 

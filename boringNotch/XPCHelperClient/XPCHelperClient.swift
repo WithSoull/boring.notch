@@ -242,6 +242,33 @@ final class XPCHelperClient: NSObject {
         }
     }
 
+    @MainActor func peripheralBatteries() async -> Data? {
+        do {
+            let service = ensureRemoteService()
+            return try await service.withContinuation { service, continuation in
+                service.peripheralBatteries { continuation.resume(returning: $0) }
+            }
+        } catch { return nil }
+    }
+
+    @MainActor func microphoneStatus() async -> Data? {
+        do {
+            let service = ensureRemoteService()
+            return try await service.withContinuation { service, continuation in
+                service.microphoneStatus { continuation.resume(returning: $0) }
+            }
+        } catch { return nil }
+    }
+
+    @MainActor func toggleMicrophone() async -> Data? {
+        do {
+            let service = ensureRemoteService()
+            return try await service.withContinuation { service, continuation in
+                service.toggleMicrophone { continuation.resume(returning: $0) }
+            }
+        } catch { return nil }
+    }
+
     // MARK: - VPN
 
     nonisolated func vpnStatus(serviceName: String) async -> String? {

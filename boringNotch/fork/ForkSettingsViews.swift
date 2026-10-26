@@ -66,6 +66,7 @@ struct AgentsAndStatusSettings: View {
 
     var body: some View {
         Form {
+            DeviceControlsSettings()
             Section {
                 Defaults.Toggle(key: .showVPNStatus) {
                     Text("Show VPN status in the notch header")

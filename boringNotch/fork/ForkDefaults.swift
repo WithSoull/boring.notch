@@ -35,10 +35,14 @@ extension Defaults.Keys {
     /// App used to open an agent's folder; empty means Finder.
     static let agentFolderApp = Key<String>("agentFolderApp", default: "")
 
+    static let showPeripheralBatteries = Key<Bool>("showPeripheralBatteries", default: true)
+    static let showMicrophoneButton = Key<Bool>("showMicrophoneButton", default: true)
+
     // Shelf
     static let copyPathOnShelfDrop = Key<Bool>("copyPathOnShelfDrop", default: false)
 }
 
 extension KeyboardShortcuts.Name {
+    static let toggleMicrophoneMute = Self("toggleMicrophoneMute", default: .init(.m, modifiers: [.control, .option, .command]))
     static let openSnippets = Self("openSnippets", default: .init(.v, modifiers: [.control, .command]))
 }
