@@ -66,8 +66,6 @@ updater/appcast.xml              Sparkle appcast
 
 **Where new code goes.** Most of `boringNotch/` is listed file-by-file in `project.pbxproj`; only `boringNotch/private/`, `boringNotch/fork/` and `BoringNotchXPCHelper/` are file-system synchronized groups. Put all fork-specific code (new `.swift` files and resources such as `agent-hook.sh`) in `boringNotch/fork/`: files there are compiled and bundled automatically, and keeping them apart makes upstream merges easier. Touch upstream files only for small wiring changes. A new file anywhere else must be added to `project.pbxproj` by hand. Edit `project.pbxproj` also for package, target, build-setting or entitlement changes.
 
-Fork features are described in `SPEC.md`.
-
 ## Conventions
 
 - Settings are stored with [`Defaults`](https://github.com/sindresorhus/Defaults). Upstream keys live in `models/Constants.swift`; fork keys go in `fork/ForkDefaults.swift`. Read them in views with `@Default(.key)`.
