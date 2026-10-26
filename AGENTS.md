@@ -83,8 +83,8 @@ Fork features are described in `SPEC.md`.
 
 - **Sparkle is disabled, not removed.** The updater is created with `startingUpdater: false`, `SUFeedURL` is gone from `Info.plist`, and the "Check for Updates" UI is hidden — upstream releases would otherwise replace this build. The package, `SoftwareUpdater.swift` and the Sparkle entitlements are still there; to ship your own updates, add your own feed and `SUPublicEDKey` and start the updater again.
 - Bundle ID is still `theboringteam.boringnotch` (and `…BoringNotchXPCHelper` for the helper). If both the official app and the fork are installed, they share preferences and permissions — change the bundle ID if that's a problem.
-- `origin` is the upstream repo. Upstream does code work on `dev`; `main` is release-only. Don't push to upstream.
-- Upstream GitHub Actions need signing secrets that the fork doesn't have; they will fail in a fork until removed or adjusted.
+- Remotes: `origin` is the public fork `WithSoull/boring.notch` (default branch `fork/notch-features`); `upstream` is `TheBoredTeam/boring.notch`. Upstream does code work on `dev`; `main` is release-only. Never push to `upstream`.
+- Upstream GitHub Actions need signing secrets that the fork doesn't have. Workflows are not enabled on the fork; remove or adjust them before enabling Actions.
 
 ## Before finishing a change
 
