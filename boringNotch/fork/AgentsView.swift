@@ -165,19 +165,17 @@ struct AgentSessionRow: View {
     var body: some View {
         HStack(spacing: 8) {
             AgentStateIcon(state: session.state)
+            AgentSourceBadge(source: session.source, size: 22)
             VStack(alignment: .leading, spacing: 1) {
                 (Text(session.displayTitle).foregroundStyle(.white)
                     + Text(" — \(session.statusLabel)").foregroundStyle(session.state.color))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                HStack(spacing: 4) {
-                    AgentSourceBadge(source: session.source, size: 11)
-                    Text(session.project)
-                        .font(.caption2)
-                        .foregroundStyle(.gray)
-                        .lineLimit(1)
-                }
+                Text(session.project)
+                    .font(.caption2)
+                    .foregroundStyle(.gray)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
             if hovering && !session.cwd.isEmpty {
@@ -253,7 +251,7 @@ struct AgentBannerActivity: View {
         } trailing: {
             Text(session.statusLabel)
                 .foregroundStyle(session.state.color)
-            AgentSourceBadge(source: session.source)
+            AgentSourceBadge(source: session.source, size: 18)
         }
     }
 }
@@ -270,7 +268,7 @@ struct WorkingAgentsActivity: View {
         } trailing: {
             Text(sessions.count > 1 ? String(localized: "\(sessions.count) working") : sessions.first?.statusLabel ?? "")
                 .foregroundStyle(AgentSession.State.working.color)
-            ForEach(sources, id: \.self) { AgentSourceBadge(source: $0) }
+            ForEach(sources, id: \.self) { AgentSourceBadge(source: $0, size: 18) }
         }
     }
 
