@@ -290,6 +290,38 @@ final class XPCHelperClient: NSObject {
             return false
         }
     }
+
+    // MARK: - Dev servers
+
+    nonisolated func listDevServers() async -> Data? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.listDevServers { data in
+                    continuation.resume(returning: data)
+                }
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func stopDevServer(pid: Int32) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.stopDevServer(pid) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
 }
 
 extension Notification.Name {

@@ -25,5 +25,8 @@ import Foundation
     func setVPNConnected(_ serviceName: String, connected: Bool, with reply: @escaping (Bool) -> Void)
     // Open a folder in Finder or another app (performed by the helper; the sandboxed app can't reach arbitrary paths)
     func openFolder(_ path: String, withApplication appName: String, with reply: @escaping (Bool) -> Void)
+    // Local dev servers: listening TCP ports of user processes (JSON-encoded [DevServer])
+    func listDevServers(with reply: @escaping (Data?) -> Void)
+    func stopDevServer(_ pid: Int32, with reply: @escaping (Bool) -> Void)
 }
 

@@ -12,6 +12,7 @@ struct AgentsView: View {
     @ObservedObject private var agents = AgentActivityManager.shared
     @ObservedObject private var stats = SystemStatsMonitor.shared
     @ObservedObject private var amphetamine = AmphetamineManager.shared
+    @ObservedObject private var devServers = DevServersManager.shared
     @Default(.autoAmphetamineForAgents) private var autoAmphetamine
 
     var body: some View {
@@ -29,16 +30,20 @@ struct AgentsView: View {
         .padding(.top, 6)
         .onAppear {
             stats.startWatching()
+            devServers.startWatching()
             amphetamine.refresh()
         }
-        .onDisappear { stats.stopWatching() }
+        .onDisappear {
+            stats.stopWatching()
+            devServers.stopWatching()
+        }
     }
 
-    // MARK: Sessions
+    // MARK: Sessions and servers
 
     @ViewBuilder
     private var sessionList: some View {
-        if agents.sessions.isEmpty {
+        if agents.sessions.isEmpty && devServers.servers.isEmpty {
             VStack(spacing: 6) {
                 Image(systemName: "terminal")
                     .font(.title2)
@@ -50,7 +55,7 @@ struct AgentsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
-                VStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(agents.sessions) { session in
                         Button {
                             guard !session.cwd.isEmpty else { return }
@@ -62,6 +67,16 @@ struct AgentsView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .help(session.cwd)
+                    }
+
+                    if !devServers.servers.isEmpty {
+                        Text("Servers")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.gray)
+                            .padding(.top, agents.sessions.isEmpty ? 0 : 4)
+                        ForEach(devServers.servers) { server in
+                            DevServerRow(server: server)
+                        }
                     }
                 }
             }
@@ -291,5 +306,47 @@ struct WorkingAgentsDot: View {
             .opacity(pulse ? 0.35 : 1)
             .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
             .onAppear { pulse = true }
+    }
+}
+
+struct DevServerRow: View {
+    let server: DevServer
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(":\(server.port)")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.green)
+                .frame(width: 52, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(server.project)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(server.name)
+                    .font(.caption2)
+                    .foregroundStyle(.gray)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if hovering {
+                Button {
+                    DevServersManager.shared.stop(server)
+                } label: {
+                    Image(systemName: "stop.circle")
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help("Stop process \(server.pid)")
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(hovering ? 0.1 : 0.06)))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { DevServersManager.shared.open(server) }
+        .help("Open http://localhost:\(server.port) · \(server.cwd)")
     }
 }

@@ -5,6 +5,7 @@
 //  Created by Alexander on 2025-11-16.
 //
 
+import Darwin
 import Foundation
 import ApplicationServices
 import IOKit
@@ -210,6 +211,93 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
             try process.run()
         } catch {
             reply(false)
+        }
+    }
+
+    // MARK: - Dev servers
+
+    private struct DevServer: Codable {
+        let pid: Int32
+        let port: Int
+        let name: String
+        let cwd: String
+    }
+
+    @objc func listDevServers(with reply: @escaping (Data?) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            reply(try? JSONEncoder().encode(Self.devServers()))
+        }
+    }
+
+    @objc func stopDevServer(_ pid: Int32, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Only signal processes that are still listed as dev servers.
+            guard Self.devServers().contains(where: { $0.pid == pid }) else {
+                reply(false)
+                return
+            }
+            reply(kill(pid, SIGTERM) == 0)
+        }
+    }
+
+    private static func devServers() -> [DevServer] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = ["-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-u", String(getuid()), "-Fpcn"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        guard (try? process.run()) != nil else { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard let output = String(data: data, encoding: .utf8) else { return [] }
+
+        var result: [DevServer] = []
+        var seen = Set<String>()
+        var pid: Int32 = 0
+        var name = ""
+        for line in output.split(separator: "\n") {
+            guard let tag = line.first else { continue }
+            let value = String(line.dropFirst())
+            switch tag {
+            case "p": pid = Int32(value) ?? 0
+            case "c": name = value
+            case "n":
+                guard let portText = value.split(separator: ":").last, let port = Int(portText),
+                      port >= 1024, !seen.contains("\(pid):\(port)"),
+                      let path = executablePath(pid), isDevExecutable(path)
+                else { continue }
+                seen.insert("\(pid):\(port)")
+                result.append(DevServer(pid: pid, port: port, name: name, cwd: workingDirectory(pid) ?? ""))
+            default: break
+            }
+        }
+        return result.sorted { $0.port < $1.port }
+    }
+
+    /// Excludes system services and installed apps (VPN tunnels, launchers, …), but keeps developer toolchains.
+    private static func isDevExecutable(_ path: String) -> Bool {
+        let toolchainPrefixes = ["/Library/Developer/", "/Applications/Xcode.app/Contents/Developer/"]
+        if toolchainPrefixes.contains(where: path.hasPrefix) { return true }
+        let excludedPrefixes = [
+            "/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/",
+            "/Applications/", NSHomeDirectory() + "/Applications/", NSHomeDirectory() + "/Library/", "/private/var/folders/",
+        ]
+        return !excludedPrefixes.contains(where: path.hasPrefix)
+    }
+
+    private static func executablePath(_ pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    private static func workingDirectory(_ pid: Int32) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &info, size) == size else { return nil }
+        return withUnsafePointer(to: &info.pvi_cdir.vip_path) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
         }
     }
 
