@@ -359,13 +359,7 @@ final class ShelfItemViewModel: ObservableObject {
 
         // Always show "Copy" for all item types
         addMenuItem(title: "Copy")
-        // If there are file URLs, add "Copy Path" as an alternate menu item (Option key)
-        if !selectedFileURLs.isEmpty {
-            let copyPathItem = NSMenuItem(title: "Copy Path", action: nil, keyEquivalent: "")
-            copyPathItem.isAlternate = true
-            copyPathItem.keyEquivalentModifierMask = [.option]
-            menu.addItem(copyPathItem)
-        }
+        if !selectedFileURLs.isEmpty { addMenuItem(title: "Copy Path") }
 
         menu.addItem(NSMenuItem.separator())
         addMenuItem(title: "Remove")

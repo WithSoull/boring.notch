@@ -20,5 +20,10 @@ import Foundation
     func isScreenBrightnessAvailable(with reply: @escaping (Bool) -> Void)
     func currentScreenBrightness(with reply: @escaping (NSNumber?) -> Void)
     func setScreenBrightness(_ value: Float, with reply: @escaping (Bool) -> Void)
+    // VPN (Network Extension) connection control via scutil (performed by the helper)
+    func vpnStatus(_ serviceName: String, with reply: @escaping (String?) -> Void)
+    func setVPNConnected(_ serviceName: String, connected: Bool, with reply: @escaping (Bool) -> Void)
+    // Open a folder in Finder or another app (performed by the helper; the sandboxed app can't reach arbitrary paths)
+    func openFolder(_ path: String, withApplication appName: String, with reply: @escaping (Bool) -> Void)
 }
 

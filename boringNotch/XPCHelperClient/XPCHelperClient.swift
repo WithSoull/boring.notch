@@ -241,6 +241,55 @@ final class XPCHelperClient: NSObject {
             return false
         }
     }
+
+    // MARK: - VPN
+
+    nonisolated func vpnStatus(serviceName: String) async -> String? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.vpnStatus(serviceName) { status in
+                    continuation.resume(returning: status)
+                }
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func setVPNConnected(serviceName: String, connected: Bool) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.setVPNConnected(serviceName, connected: connected) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Folders
+
+    nonisolated func openFolder(path: String, withApplication appName: String) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.openFolder(path, withApplication: appName) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
 }
 
 extension Notification.Name {

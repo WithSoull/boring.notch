@@ -177,6 +177,8 @@ struct BoringBatteryView: View {
     var maxCapacity: Float = 0
     var timeToFullCharge: Int = 0
     @State var isForNotification: Bool = false
+    /// Show only the percentage, colored by power state, instead of the battery icon.
+    var textOnly: Bool = false
     
     @State private var showPopupMenu: Bool = false
     @State private var isPressed: Bool = false
@@ -186,6 +188,13 @@ struct BoringBatteryView: View {
 
     @EnvironmentObject var vm: BoringViewModel
 
+    private var percentageColor: Color {
+        if isCharging || isPluggedIn { return .green }
+        if isInLowPowerMode { return .yellow }
+        if levelBattery <= 20 { return .red }
+        return .white
+    }
+
     var body: some View {
         Button(action: {
             withAnimation {
@@ -193,19 +202,26 @@ struct BoringBatteryView: View {
             }
         }) {
             HStack {
-                if Defaults[.showBatteryPercentage] {
+                if textOnly {
                     Text("\(Int32(levelBattery))%")
-                        .font(.callout)
-                        .foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(percentageColor)
+                        .monospacedDigit()
+                } else {
+                    if Defaults[.showBatteryPercentage] {
+                        Text("\(Int32(levelBattery))%")
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                    }
+                    BatteryView(
+                        levelBattery: levelBattery,
+                        isPluggedIn: isPluggedIn,
+                        isCharging: isCharging,
+                        isInLowPowerMode: isInLowPowerMode,
+                        batteryWidth: batteryWidth,
+                        isForNotification: isForNotification
+                    )
                 }
-                BatteryView(
-                    levelBattery: levelBattery,
-                    isPluggedIn: isPluggedIn,
-                    isCharging: isCharging,
-                    isInLowPowerMode: isInLowPowerMode,
-                    batteryWidth: batteryWidth,
-                    isForNotification: isForNotification
-                )
             }
         }
         .buttonStyle(ScaleButtonStyle())

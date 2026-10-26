@@ -51,6 +51,12 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Snippets") {
+                    Label("Snippets", systemImage: "text.quote")
+                }
+                NavigationLink(value: "Agents") {
+                    Label("Agents & Status", systemImage: "terminal")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -85,6 +91,10 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Snippets":
+                    SnippetsSettings()
+                case "Agents":
+                    AgentsAndStatusSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
@@ -710,7 +720,7 @@ struct Media: View {
 struct CalendarSettings: View {
     @ObservedObject private var calendarManager = CalendarManager.shared
     @Default(.showCalendar) var showCalendar: Bool
-    @Default(.hideCompletedReminders) var hideCompletedReminders
+    @Default(.upcomingEventLeadMinutes) var upcomingEventLeadMinutes
     @Default(.hideAllDayEvents) var hideAllDayEvents
     @Default(.autoScrollToNextEvent) var autoScrollToNextEvent
 
@@ -718,9 +728,6 @@ struct CalendarSettings: View {
         Form {
             Defaults.Toggle(key: .showCalendar) {
                 Text("Show calendar")
-            }
-            Defaults.Toggle(key: .hideCompletedReminders) {
-                Text("Hide completed reminders")
             }
             Defaults.Toggle(key: .hideAllDayEvents) {
                 Text("Hide all-day events")
@@ -730,6 +737,23 @@ struct CalendarSettings: View {
             }
             Defaults.Toggle(key: .showFullEventTitles) {
                 Text("Always show full event titles")
+            }
+            Section {
+                Defaults.Toggle(key: .showUpcomingEventCountdown) {
+                    Text("Show countdown to the next event in the closed notch")
+                }
+                Stepper(value: $upcomingEventLeadMinutes, in: 1...60) {
+                    Text("Start countdown \(upcomingEventLeadMinutes) min before the event")
+                }
+            } header: {
+                Text("Upcoming event")
+            }
+            Section {
+                Text("To show TickTick tasks and events: in TickTick open Settings → Calendar → Calendar Subscription and copy the iCal link, then in the Calendar app choose File → New Calendar Subscription and paste it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("TickTick")
             }
             Section(header: Text("Calendars")) {
                 if calendarManager.calendarAuthorizationStatus != .fullAccess {
@@ -747,43 +771,7 @@ struct CalendarSettings: View {
                     }
                 } else {
                     List {
-                        ForEach(calendarManager.eventCalendars, id: \.id) { calendar in
-                            Toggle(
-                                isOn: Binding(
-                                    get: { calendarManager.getCalendarSelected(calendar) },
-                                    set: { isSelected in
-                                        Task {
-                                            await calendarManager.setCalendarSelected(
-                                                calendar, isSelected: isSelected)
-                                        }
-                                    }
-                                )
-                            ) {
-                                Text(calendar.title)
-                            }
-                            .accentColor(lighterColor(from: calendar.color))
-                            .disabled(!showCalendar)
-                        }
-                    }
-                }
-            }
-            Section(header: Text("Reminders")) {
-                if calendarManager.reminderAuthorizationStatus != .fullAccess {
-                    Text("Reminder access is denied. Please enable it in System Settings.")
-                        .foregroundColor(.red)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    Button("Open Reminder Settings") {
-                        if let settingsURL = URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"
-                        ) {
-                            NSWorkspace.shared.open(settingsURL)
-                        }
-                    }
-                } else {
-                    List {
-                        ForEach(calendarManager.reminderLists, id: \.id) { calendar in
+                        ForEach(calendarManager.allCalendars, id: \.id) { calendar in
                             Toggle(
                                 isOn: Binding(
                                     get: { calendarManager.getCalendarSelected(calendar) },
@@ -809,7 +797,6 @@ struct CalendarSettings: View {
         .onAppear {
             Task {
                 await calendarManager.checkCalendarAuthorization()
-                await calendarManager.checkReminderAuthorization()
             }
         }
     }
@@ -865,8 +852,6 @@ struct About: View {
                     Text("Version info")
                 }
 
-                UpdaterSettingsView(updater: updaterController.updater)
-
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
@@ -903,7 +888,6 @@ struct About: View {
             //                openWindow(id: "onboarding")
             //            }
             //            .controlSize(.extraLarge)
-            CheckForUpdatesView(updater: updaterController.updater)
         }
         .navigationTitle("About")
     }
@@ -947,6 +931,9 @@ struct Shelf: View {
                 }
                 Defaults.Toggle(key: .autoRemoveShelfItems) {
                     Text("Remove from shelf after dragging")
+                }
+                Defaults.Toggle(key: .copyPathOnShelfDrop) {
+                    Text("Copy file path when a file is added")
                 }
 
             } header: {
@@ -1176,9 +1163,6 @@ struct Appearance: View {
         Form {
             Section {
                 Toggle("Always show tabs", isOn: $coordinator.alwaysShowTabs)
-                Defaults.Toggle(key: .settingsIconInNotch) {
-                    Text("Show settings icon in notch")
-                }
 
             } header: {
                 Text("General")
@@ -1739,6 +1723,7 @@ struct Shortcuts: View {
             }
             Section {
                 KeyboardShortcuts.Recorder("Toggle Notch Open:", name: .toggleNotchOpen)
+                KeyboardShortcuts.Recorder("Open Settings:", name: .openSettings)
             }
         }
         .accentColor(.effectiveAccent)

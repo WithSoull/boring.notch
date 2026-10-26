@@ -175,6 +175,62 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         return nil
     }
 
+    // MARK: - VPN
+
+    @objc func vpnStatus(_ serviceName: String, with reply: @escaping (String?) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            guard let output = Self.runScutil(["--nc", "status", serviceName]) else {
+                reply(nil)
+                return
+            }
+            // First line is the status: Connected, Disconnected, Connecting, Disconnecting, Invalid…
+            reply(output.split(separator: "\n").first.map(String.init))
+        }
+    }
+
+    @objc func setVPNConnected(_ serviceName: String, connected: Bool, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            reply(Self.runScutil(["--nc", connected ? "start" : "stop", serviceName]) != nil)
+        }
+    }
+
+    // MARK: - Folders
+
+    @objc func openFolder(_ path: String, withApplication appName: String, with reply: @escaping (Bool) -> Void) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            reply(false)
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = appName.isEmpty ? [path] : ["-a", appName, path]
+        process.terminationHandler = { reply($0.terminationStatus == 0) }
+        do {
+            try process.run()
+        } catch {
+            reply(false)
+        }
+    }
+
+    private static func runScutil(_ arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
+        process.arguments = arguments
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     // MARK: - Helper handle for private framework
     private enum DisplayServicesHandle {
         static let handle: UnsafeMutableRawPointer? = {

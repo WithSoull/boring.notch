@@ -441,11 +441,15 @@ struct NotchHomeView: View {
 
     private var mainContent: some View {
         HStack(alignment: .top, spacing: (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
+            if Defaults[.showCalendar] {
+                CompactMusicView(albumArtNamespace: albumArtNamespace)
+            } else {
+                MusicPlayerView(albumArtNamespace: albumArtNamespace)
+            }
 
             if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: shouldShowCamera ? 170 : 215)
+                CompactCalendarView()
+                    .frame(maxWidth: .infinity)
                     .onHover { isHovering in
                         vm.isHoveringCalendar = isHovering
                     }

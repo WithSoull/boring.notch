@@ -6,6 +6,7 @@
 
 import Foundation
 import AppKit
+import Defaults
 
 @MainActor
 final class ShelfStateViewModel: ObservableObject {
@@ -41,6 +42,14 @@ final class ShelfStateViewModel: ObservableObject {
             }
         }
         items = merged
+
+        if Defaults[.copyPathOnShelfDrop] {
+            let paths = newItems.compactMap { resolveFileURL(for: $0)?.path }
+            if !paths.isEmpty {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
+            }
+        }
     }
 
     func remove(_ item: ShelfItem) {

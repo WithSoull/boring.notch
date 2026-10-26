@@ -12,7 +12,6 @@ enum OnboardingStep {
     case welcome
     case cameraPermission
     case calendarPermission
-    case remindersPermission
     case accessibilityPermission
     case musicPermission
     case finished
@@ -68,40 +67,18 @@ struct OnboardingView: View {
                         Task {
                                 await requestCalendarPermission()
                                 withAnimation(.easeInOut(duration: 0.6)) {
-                                    step = .remindersPermission
+                                    step = .accessibilityPermission
                                 }
                         }
                     },
                     onSkip: {
                             withAnimation(.easeInOut(duration: 0.6)) {
-                                step = .remindersPermission
+                                step = .accessibilityPermission
                             }
                     }
                 )
                 .transition(.opacity)
 
-                case .remindersPermission:
-                    PermissionRequestView(
-                        icon: Image(systemName: "checklist"),
-                        title: "Enable Reminders Access",
-                        description: "Boring Notch can show your scheduled reminders alongside your calendar events. Access to Reminders is needed to display your reminders.",
-                        privacyNote: "Your reminders data is only used to show your reminders and is never shared.",
-                        onAllow: {
-                            Task {
-                                await requestRemindersPermission()
-                                withAnimation(.easeInOut(duration: 0.6)) {
-                                    step = .accessibilityPermission
-                                }
-                            }
-                        },
-                        onSkip: {
-                            withAnimation(.easeInOut(duration: 0.6)) {
-                                step = .accessibilityPermission
-                            }
-                        }
-                    )
-                    .transition(.opacity)
-                
             case .accessibilityPermission:
                 PermissionRequestView(
                     icon: Image(systemName: "hand.raised.fill"),
@@ -152,9 +129,6 @@ struct OnboardingView: View {
         _ = try? await calendarService.requestAccess(to: .event)
     }
 
-    func requestRemindersPermission() async {
-        _ = try? await calendarService.requestAccess(to: .reminder)
-    }
     
     func requestAccessibilityPermission() async {
         await XPCHelperClient.shared.ensureAccessibilityAuthorization(promptIfNeeded: true)

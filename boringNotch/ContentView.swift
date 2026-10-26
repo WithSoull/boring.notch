@@ -23,6 +23,8 @@ struct ContentView: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
+    @ObservedObject var calendarManager = CalendarManager.shared
+    @ObservedObject var agentActivity = AgentActivityManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -58,10 +60,37 @@ struct ContentView: View {
         )
     }
 
+    private enum ClosedSideActivity {
+        case agent(AgentSession)
+        case event(EventModel)
+        case workingAgents([AgentSession])
+    }
+
+    private var isMusicActivityShown: Bool {
+        (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
+    }
+
+    private var workingAgents: [AgentSession] {
+        guard Defaults[.showWorkingAgentsIndicator] else { return [] }
+        return agentActivity.sessions.filter { $0.state == .working }
+    }
+
+    /// Compact side activity shown in the closed notch instead of music/face, if any.
+    private var closedSideActivity: ClosedSideActivity? {
+        guard vm.notchState == .closed, !vm.hideOnClosed, !coordinator.expandingView.show else { return nil }
+        if let session = agentActivity.banner { return .agent(session) }
+        if let event = calendarManager.upcomingEvent { return .event(event) }
+        // With music playing, working agents are shown as a dot on the album art instead.
+        if !workingAgents.isEmpty && !isMusicActivityShown { return .workingAgents(workingAgents) }
+        return nil
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
-        if coordinator.expandingView.type == .battery && coordinator.expandingView.show
+        if closedSideActivity != nil {
+            chinWidth += 2 * (closedNotchSideWidth + 6)
+        } else if coordinator.expandingView.type == .battery && coordinator.expandingView.show
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
@@ -287,6 +316,18 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if let activity = closedSideActivity {
+                          Group {
+                              switch activity {
+                              case .agent(let session):
+                                  AgentBannerActivity(session: session)
+                              case .event(let event):
+                                  UpcomingEventActivity(event: event)
+                              case .workingAgents(let sessions):
+                                  WorkingAgentsActivity(sessions: sessions)
+                              }
+                          }
+                          .transition(.opacity)
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
@@ -349,6 +390,10 @@ struct ContentView: View {
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
                     case .shelf:
                         ShelfView()
+                    case .snippets:
+                        SnippetsView()
+                    case .agents:
+                        AgentsView()
                     }
                 }
                 .transition(
@@ -356,6 +401,9 @@ struct ContentView: View {
                     .combined(with: .opacity)
                     .animation(.smooth(duration: 0.35))
                 )
+                .tabSwipeGesture(isEnabled: true) { step in
+                    coordinator.switchTab(by: step)
+                }
                 .zIndex(1)
                 .allowsHitTesting(vm.notchState == .open)
                 .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
@@ -400,6 +448,12 @@ struct ContentView: View {
                     width: max(0, vm.effectiveClosedNotchHeight - 12),
                     height: max(0, vm.effectiveClosedNotchHeight - 12)
                 )
+                .overlay(alignment: .topTrailing) {
+                    if !workingAgents.isEmpty {
+                        WorkingAgentsDot()
+                            .offset(x: 3, y: -3)
+                    }
+                }
 
             Rectangle()
                 .fill(.black)

@@ -17,22 +17,49 @@ class CalendarManager: ObservableObject {
 
     @Published var currentWeekStartDate: Date
     @Published var events: [EventModel] = []
+    /// Nearest timed event starting within `upcomingEventLeadMinutes` (or already started less than a minute ago).
+    @Published var upcomingEvent: EventModel?
     @Published var allCalendars: [CalendarModel] = []
-    @Published var eventCalendars: [CalendarModel] = []
-    @Published var reminderLists: [CalendarModel] = []
     @Published var selectedCalendarIDs: Set<String> = []
     @Published var calendarAuthorizationStatus: EKAuthorizationStatus = .notDetermined
-    @Published var reminderAuthorizationStatus: EKAuthorizationStatus = .notDetermined
     private var selectedCalendars: [CalendarModel] = []
     private let calendarService = CalendarService()
 
     private var eventStoreChangedObserver: NSObjectProtocol?
+    private var upcomingEventTimer: Timer?
 
     private init() {
         self.currentWeekStartDate = CalendarManager.startOfDay(Date())
         setupEventStoreChangedObserver()
         Task {
-            await reloadCalendarAndReminderLists()
+            await reloadCalendars()
+            await refreshUpcomingEvent()
+        }
+        upcomingEventTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { await self?.refreshUpcomingEvent() }
+        }
+    }
+
+    func refreshUpcomingEvent() async {
+        guard Defaults[.showUpcomingEventCountdown] else {
+            upcomingEvent = nil
+            return
+        }
+        let now = Date()
+        let lead = TimeInterval(Defaults[.upcomingEventLeadMinutes] * 60)
+        let candidates = await calendarService.events(
+            from: now.addingTimeInterval(-60),
+            to: now.addingTimeInterval(lead),
+            calendars: selectedCalendars.map { $0.id }
+        )
+        let next = candidates.first { event in
+            !event.isAllDay
+                && event.start <= now.addingTimeInterval(lead)
+                && event.start >= now.addingTimeInterval(-60)
+                && !(event.attendance == .declined)
+        }
+        if next != upcomingEvent {
+            upcomingEvent = next
         }
     }
 
@@ -49,17 +76,15 @@ class CalendarManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task {
-                await self?.reloadCalendarAndReminderLists()
+                await self?.reloadCalendars()
+                await self?.refreshUpcomingEvent()
             }
         }
     }
 
     @MainActor
-    func reloadCalendarAndReminderLists() async {
-        let all = await calendarService.calendars()
-        self.eventCalendars = all.filter { !$0.isReminder }
-        self.reminderLists = all.filter { $0.isReminder }
-        self.allCalendars = all // for legacy compatibility, can be removed if not needed
+    func reloadCalendars() async {
+        self.allCalendars = await calendarService.calendars()
         updateSelectedCalendars()
     }
 
@@ -78,7 +103,7 @@ class CalendarManager: ObservableObject {
             }
             self.calendarAuthorizationStatus = granted ? .fullAccess : .denied
             if granted {
-                await reloadCalendarAndReminderLists()
+                await reloadCalendars()
                 events = await calendarService.events(
                     from: currentWeekStartDate,
                     to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
@@ -88,7 +113,7 @@ class CalendarManager: ObservableObject {
             NSLog("Calendar access denied or restricted")
         case .fullAccess:
             NSLog("Full access")
-            await reloadCalendarAndReminderLists()
+            await reloadCalendars()
             events = await calendarService.events(
                 from: currentWeekStartDate,
                 to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
@@ -99,36 +124,6 @@ class CalendarManager: ObservableObject {
             print("Unknown authorization status")
         }
     }
-    
-    func checkReminderAuthorization() async {
-        let status = EKEventStore.authorizationStatus(for: .reminder)
-        DispatchQueue.main.async {
-            print("📅 Current reminder authorization status: \(status)")
-            self.reminderAuthorizationStatus = status
-        }
-
-        switch status {
-        case .notDetermined:
-            guard let granted = try? await calendarService.requestAccess(to: .reminder) else {
-                self.reminderAuthorizationStatus = .notDetermined
-                return
-            }
-            self.reminderAuthorizationStatus = granted ? .fullAccess : .denied
-            if granted {
-                await reloadCalendarAndReminderLists()
-            }
-        case .restricted, .denied:
-            NSLog("Reminder access denied or restricted")
-        case .fullAccess:
-            NSLog("Full access")
-            await reloadCalendarAndReminderLists()
-        case .writeOnly:
-            NSLog("Write only")
-        @unknown default:
-            print("Unknown authorization status")
-        }
-    }
-        
 
     func updateSelectedCalendars() {
         // Populate selectedCalendarIDs based on Defaults calendar selection state
@@ -191,14 +186,5 @@ class CalendarManager: ObservableObject {
             calendars: calendarIDs
         )
         self.events = eventsResult
-    }
-    
-    func setReminderCompleted(reminderID: String, completed: Bool) async {
-        await calendarService.setReminderCompleted(reminderID: reminderID, completed: completed)
-        // Refresh events after updating
-        events = await calendarService.events(
-            from: currentWeekStartDate,
-            to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
-            calendars: selectedCalendars.map { $0.id })
     }
 }

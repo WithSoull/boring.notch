@@ -1,0 +1,295 @@
+//
+//  AgentsView.swift
+//  boringNotch
+//
+//  Notch tab: agent sessions, system load and Amphetamine controls.
+//
+
+import Defaults
+import SwiftUI
+
+struct AgentsView: View {
+    @ObservedObject private var agents = AgentActivityManager.shared
+    @ObservedObject private var stats = SystemStatsMonitor.shared
+    @ObservedObject private var amphetamine = AmphetamineManager.shared
+    @Default(.autoAmphetamineForAgents) private var autoAmphetamine
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            sessionList
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            VStack(alignment: .leading, spacing: 10) {
+                statsSection
+                if amphetamine.isInstalled {
+                    amphetamineSection
+                }
+            }
+            .frame(width: 190, alignment: .topLeading)
+        }
+        .padding(.top, 6)
+        .onAppear {
+            stats.startWatching()
+            amphetamine.refresh()
+        }
+        .onDisappear { stats.stopWatching() }
+    }
+
+    // MARK: Sessions
+
+    @ViewBuilder
+    private var sessionList: some View {
+        if agents.sessions.isEmpty {
+            VStack(spacing: 6) {
+                Image(systemName: "terminal")
+                    .font(.title2)
+                Text("No agent sessions")
+                Text("Install hooks in Settings → Agents")
+                    .font(.caption)
+            }
+            .foregroundStyle(.gray)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(agents.sessions) { session in
+                        Button {
+                            guard !session.cwd.isEmpty else { return }
+                            Task {
+                                _ = await XPCHelperClient.shared.openFolder(path: session.cwd, withApplication: Defaults[.agentFolderApp])
+                            }
+                        } label: {
+                            AgentSessionRow(session: session)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help(session.cwd)
+                    }
+                }
+            }
+            .scrollIndicators(.never)
+        }
+    }
+
+    // MARK: Stats
+
+    private var statsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            StatBar(label: "CPU", value: stats.cpuUsage, detail: "\(Int(stats.cpuUsage * 100))%")
+            StatBar(
+                label: "RAM",
+                value: stats.memoryFraction,
+                detail: String(format: "%.1f / %.0f GB", Double(stats.memoryUsed) / 1_073_741_824, Double(stats.memoryTotal) / 1_073_741_824)
+            )
+        }
+    }
+
+    // MARK: Amphetamine
+
+    private var amphetamineSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: amphetamine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
+                    .foregroundStyle(amphetamine.isActive ? .orange : .gray)
+                Text(amphetamineStatus)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            .font(.system(size: 12, weight: .medium, design: .rounded))
+
+            HStack(spacing: 6) {
+                if amphetamine.isActive {
+                    pill("Stop") { amphetamine.stop() }
+                } else {
+                    pill("∞") { amphetamine.start() }
+                    pill("1h") { amphetamine.start(minutes: 60) }
+                    pill("3h") { amphetamine.start(minutes: 180) }
+                }
+            }
+
+            Button {
+                autoAmphetamine.toggle()
+            } label: {
+                HStack(spacing: 8) {
+                    Text("Auto while agents work")
+                        .font(.caption)
+                        .foregroundStyle(.gray)
+                    // Custom switch: system switches render grey in the never-key notch window.
+                    Capsule()
+                        .fill(autoAmphetamine ? Color.green : Color.white.opacity(0.15))
+                        .frame(width: 28, height: 16)
+                        .overlay(alignment: autoAmphetamine ? .trailing : .leading) {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 12, height: 12)
+                                .padding(2)
+                        }
+                        .animation(.smooth(duration: 0.2), value: autoAmphetamine)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private var amphetamineStatus: String {
+        guard amphetamine.isActive else { return String(localized: "Mac can sleep") }
+        if amphetamine.startedForAgents { return String(localized: "Awake for agents") }
+        if amphetamine.timeRemaining > 0 {
+            let minutes = amphetamine.timeRemaining / 60
+            return minutes >= 60
+                ? String(localized: "Awake · \(minutes / 60)h \(minutes % 60)m left")
+                : String(localized: "Awake · \(minutes)m left")
+        }
+        return String(localized: "Awake")
+    }
+
+    private func pill(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .frame(height: 22)
+                .background(Capsule().fill(Color.white.opacity(0.1)))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct AgentSessionRow: View {
+    let session: AgentSession
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AgentStateIcon(state: session.state)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(session.project)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text("\(session.source.displayName) · \(stateText)")
+                    .font(.caption2)
+                    .foregroundStyle(.gray)
+            }
+            Spacer(minLength: 0)
+            Text(session.updatedAt, style: .relative)
+                .font(.caption2)
+                .foregroundStyle(.gray)
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+    }
+
+    private var stateText: String {
+        switch session.state {
+        case .working: return String(localized: "working")
+        case .waiting: return String(localized: "needs your input")
+        case .finished: return String(localized: "done")
+        }
+    }
+}
+
+struct AgentStateIcon: View {
+    let state: AgentSession.State
+
+    var body: some View {
+        switch state {
+        case .working:
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 14)
+        case .waiting:
+            Image(systemName: "exclamationmark.bubble.fill")
+                .foregroundStyle(.yellow)
+                .frame(width: 14)
+        case .finished:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .frame(width: 14)
+        }
+    }
+}
+
+private struct StatBar: View {
+    let label: String
+    let value: Double
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(label).foregroundStyle(.white)
+                Spacer()
+                Text(detail).foregroundStyle(.gray).monospacedDigit()
+            }
+            .font(.system(size: 11, weight: .medium, design: .rounded))
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1))
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * min(max(value, 0), 1))
+                }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    private var color: Color {
+        value > 0.85 ? .red : value > 0.6 ? .orange : .green
+    }
+}
+
+/// Closed-notch banner: an agent finished or needs input.
+struct AgentBannerActivity: View {
+    let session: AgentSession
+
+    var body: some View {
+        ClosedNotchSidesView {
+            AgentStateIcon(state: session.state)
+            Text(session.project)
+                .truncationMode(.tail)
+        } trailing: {
+            Text(session.state == .waiting ? String(localized: "waiting") : String(localized: "done"))
+                .foregroundStyle(session.state == .waiting ? .yellow : .green)
+            Text(session.source.displayName)
+                .foregroundStyle(.gray)
+        }
+    }
+}
+
+/// Closed-notch activity while agents are working (shown when no music is playing).
+struct WorkingAgentsActivity: View {
+    let sessions: [AgentSession]
+
+    var body: some View {
+        ClosedNotchSidesView {
+            ProgressView()
+                .controlSize(.mini)
+            Text(sessions.first?.project ?? "")
+                .truncationMode(.tail)
+        } trailing: {
+            Text(sessions.count > 1 ? String(localized: "\(sessions.count) agents") : String(localized: "working"))
+                .foregroundStyle(.gray)
+            Image(systemName: "terminal")
+                .foregroundStyle(.green)
+        }
+    }
+}
+
+/// Small pulsing dot overlaid on the music album art while agents are working.
+struct WorkingAgentsDot: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .fill(.green)
+            .frame(width: 7, height: 7)
+            .overlay(Circle().stroke(.black, lineWidth: 1.5))
+            .opacity(pulse ? 0.35 : 1)
+            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
+    }
+}
