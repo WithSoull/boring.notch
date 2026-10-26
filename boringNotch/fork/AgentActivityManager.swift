@@ -36,6 +36,9 @@ struct AgentSession: Identifiable, Equatable {
     /// Last tool the agent used while working, e.g. "Bash".
     var tool: String
     var state: State
+    /// When the current state began (a new prompt also restarts "working"); drives the duration shown.
+    var stateSince: Date
+    /// Last event of any kind, including heartbeats.
     var updatedAt: Date
 
     var id: String { "\(source.rawValue)-\(sessionID)" }
@@ -146,12 +149,15 @@ final class AgentActivityManager: ObservableObject {
         }
 
         var session = existing.map { sessions[$0] }
-            ?? AgentSession(sessionID: sessionID, source: source, cwd: cwd, title: title, tool: "", state: newState, updatedAt: Date())
+            ?? AgentSession(sessionID: sessionID, source: source, cwd: cwd, title: title, tool: "", state: newState, stateSince: Date(), updatedAt: Date())
         if !cwd.isEmpty { session.cwd = cwd }
         if !title.isEmpty { session.title = title }
         if newState == .working {
             if !tool.isEmpty { session.tool = tool }
             if event == "UserPromptSubmit" { session.tool = "" }
+        }
+        if session.state != newState || event == "UserPromptSubmit" {
+            session.stateSince = Date()
         }
         session.state = newState
         session.updatedAt = Date()
@@ -189,6 +195,7 @@ final class AgentActivityManager: ObservableObject {
         for index in sessions.indices
         where sessions[index].state != .finished && now.timeIntervalSince(sessions[index].updatedAt) > staleWorkingTimeout {
             sessions[index].state = .finished
+            sessions[index].stateSince = now
         }
         sessions.removeAll { $0.state == .finished && now.timeIntervalSince($0.updatedAt) > finishedLifetime }
         updateAmphetamine()

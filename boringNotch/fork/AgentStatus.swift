@@ -60,6 +60,19 @@ extension AgentSession {
     }
 }
 
+/// Compact duration: "1h12m34s", "12m3s", "45s"; zero hours and minutes are left out.
+func compactDuration(_ interval: TimeInterval) -> String {
+    let total = max(0, Int(interval))
+    let hours = total / 3600
+    let minutes = total % 3600 / 60
+    let seconds = total % 60
+    var result = ""
+    if hours > 0 { result += "\(hours)h" }
+    if minutes > 0 { result += "\(minutes)m" }
+    if seconds > 0 || result.isEmpty { result += "\(seconds)s" }
+    return result
+}
+
 /// State icon used in rows and in the closed notch.
 struct AgentStateIcon: View {
     let state: AgentSession.State

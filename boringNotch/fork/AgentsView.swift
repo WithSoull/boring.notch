@@ -140,10 +140,7 @@ struct AgentsView: View {
         guard amphetamine.isActive else { return String(localized: "Mac can sleep") }
         if amphetamine.startedForAgents { return String(localized: "Awake for agents") }
         if amphetamine.timeRemaining > 0 {
-            let minutes = amphetamine.timeRemaining / 60
-            return minutes >= 60
-                ? String(localized: "Awake · \(minutes / 60)h \(minutes % 60)m left")
-                : String(localized: "Awake · \(minutes)m left")
+            return String(localized: "Awake · \(compactDuration(TimeInterval(amphetamine.timeRemaining))) left")
         }
         return String(localized: "Awake")
     }
@@ -192,11 +189,13 @@ struct AgentSessionRow: View {
                 .buttonStyle(PlainButtonStyle())
                 .help("Open \(session.cwd)")
             } else {
-                Text(session.updatedAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.gray)
-                    .monospacedDigit()
-                    .lineLimit(1)
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(compactDuration(context.date.timeIntervalSince(session.stateSince)))
+                        .font(.caption2)
+                        .foregroundStyle(.gray)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.horizontal, 8)
