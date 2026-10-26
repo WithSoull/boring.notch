@@ -5,9 +5,9 @@
 //  Tracks Claude Code / Codex sessions reported by agent-hook.sh through boringnotch://agent URLs.
 //
 
+import AppKit
 import Combine
 import Defaults
-import Foundation
 
 struct AgentSession: Identifiable, Equatable {
     enum Source: String {
@@ -28,15 +28,36 @@ struct AgentSession: Identifiable, Equatable {
         case finished
     }
 
-    let id: String
+    /// The agent's own session id (Claude Code session id / Codex thread id).
+    let sessionID: String
     let source: Source
     var cwd: String
+    var title: String
+    /// Last tool the agent used while working, e.g. "Bash".
+    var tool: String
     var state: State
     var updatedAt: Date
 
+    var id: String { "\(source.rawValue)-\(sessionID)" }
+
+    /// Short name: the project folder.
     var project: String {
         let name = (cwd as NSString).lastPathComponent
         return name.isEmpty ? source.displayName : name
+    }
+
+    var displayTitle: String {
+        title.isEmpty ? project : title
+    }
+
+    /// Deep link that opens this chat in the agent's desktop app.
+    var chatURL: URL? {
+        guard sessionID != "unknown" else { return nil }
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sessionID
+        switch source {
+        case .claude: return URL(string: "claude://code/continue?session=\(encoded)&source=boringnotch")
+        case .codex: return URL(string: "codex://threads/\(encoded)")
+        }
     }
 }
 
@@ -53,7 +74,8 @@ final class AgentActivityManager: ObservableObject {
     private var cleanupTimer: Timer?
 
     private let finishedLifetime: TimeInterval = 30 * 60
-    private let staleWorkingLifetime: TimeInterval = 3 * 60 * 60
+    /// A working session that sends nothing for this long was most likely interrupted.
+    private let staleWorkingTimeout: TimeInterval = 15 * 60
     private let amphetamineGracePeriod: Duration = .seconds(120)
 
     private init() {
@@ -62,13 +84,19 @@ final class AgentActivityManager: ObservableObject {
         }
     }
 
+    /// Call at launch: ends an Amphetamine session a previous run started for agents that are gone now.
+    func resumeAfterLaunch() {
+        updateAmphetamine()
+    }
+
     var hasWorkingSessions: Bool {
         sessions.contains { $0.state == .working }
     }
 
-    /// Path of the bundled hook script, for hook configs.
-    static var hookScriptPath: String {
-        Bundle.main.path(forResource: "agent-hook", ofType: "sh") ?? "/Applications/Boring Notch.app/Contents/Resources/agent-hook.sh"
+    func openChat(_ session: AgentSession) {
+        if let url = session.chatURL {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     func handle(url: URL) {
@@ -80,24 +108,35 @@ final class AgentActivityManager: ObservableObject {
               let event = query["event"], !event.isEmpty
         else { return }
 
-        let id = "\(source.rawValue)-\(query["session"] ?? "unknown")"
-        let cwd = Self.decodeBase64URL(query["cwd"] ?? "") ?? ""
-        apply(event: event, id: id, source: source, cwd: cwd)
+        apply(
+            event: event,
+            sessionID: query["session"].flatMap { $0.isEmpty ? nil : $0 } ?? "unknown",
+            source: source,
+            cwd: Self.decodeBase64URL(query["cwd"] ?? "") ?? "",
+            title: Self.decodeBase64URL(query["title"] ?? "") ?? "",
+            tool: Self.decodeBase64URL(query["tool"] ?? "") ?? ""
+        )
     }
 
-    private func apply(event: String, id: String, source: AgentSession.Source, cwd: String) {
+    private func apply(event: String, sessionID: String, source: AgentSession.Source, cwd: String, title: String, tool: String) {
+        let id = "\(source.rawValue)-\(sessionID)"
         let existing = sessions.firstIndex { $0.id == id }
 
-        let newState: AgentSession.State?
+        let newState: AgentSession.State
+        var showsBanner = false
         switch event {
-        case "UserPromptSubmit", "PostToolUse":
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse":
             newState = .working
         case "Stop", "agent-turn-complete":
             newState = .finished
-        case "Notification":
+            showsBanner = true
+        case "Interrupt":
+            newState = .finished
+        case "Notification", "PermissionRequest":
             // Idle reminders arrive after Stop; only a running session can be waiting for permission.
             guard let existing, sessions[existing].state != .finished else { return }
             newState = .waiting
+            showsBanner = true
         case "SessionEnd":
             if let existing { sessions.remove(at: existing) }
             updateAmphetamine()
@@ -106,10 +145,14 @@ final class AgentActivityManager: ObservableObject {
             return
         }
 
-        guard let newState else { return }
         var session = existing.map { sessions[$0] }
-            ?? AgentSession(id: id, source: source, cwd: cwd, state: newState, updatedAt: Date())
+            ?? AgentSession(sessionID: sessionID, source: source, cwd: cwd, title: title, tool: "", state: newState, updatedAt: Date())
         if !cwd.isEmpty { session.cwd = cwd }
+        if !title.isEmpty { session.title = title }
+        if newState == .working {
+            if !tool.isEmpty { session.tool = tool }
+            if event == "UserPromptSubmit" { session.tool = "" }
+        }
         session.state = newState
         session.updatedAt = Date()
 
@@ -120,7 +163,7 @@ final class AgentActivityManager: ObservableObject {
         }
         sessions.sort { $0.updatedAt > $1.updatedAt }
 
-        if newState != .working {
+        if showsBanner {
             showBanner(session)
         }
         updateAmphetamine()
@@ -143,10 +186,11 @@ final class AgentActivityManager: ObservableObject {
 
     private func cleanup() {
         let now = Date()
-        sessions.removeAll { session in
-            let age = now.timeIntervalSince(session.updatedAt)
-            return session.state == .finished ? age > finishedLifetime : age > staleWorkingLifetime
+        for index in sessions.indices
+        where sessions[index].state != .finished && now.timeIntervalSince(sessions[index].updatedAt) > staleWorkingTimeout {
+            sessions[index].state = .finished
         }
+        sessions.removeAll { $0.state == .finished && now.timeIntervalSince($0.updatedAt) > finishedLifetime }
         updateAmphetamine()
     }
 

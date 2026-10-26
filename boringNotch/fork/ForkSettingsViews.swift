@@ -112,17 +112,17 @@ struct AgentsAndStatusSettings: View {
                     }
                 }
                 HStack {
-                    Text("Codex notify (replace `notify` in ~/.codex/config.toml; append the old notify command after \"codex\" to keep it)")
+                    Text("Codex hooks (save as ~/.codex/hooks.json, then approve them in Codex)")
                     Spacer()
                     Button(copiedCodex ? "Copied" : "Copy") {
-                        copy(codexNotify)
+                        copy(codexHooks)
                         copiedCodex = true
                     }
                 }
             } header: {
                 Text("Agents")
             } footer: {
-                Text("Hooks call the script bundled with this app, which reports events back via boringnotch:// links. Codex only reports finished turns.")
+                Text("Hooks call the script bundled with this app, which reports events back via boringnotch:// links. Click a session in the Agents tab to open its chat.")
             }
         }
         .accentColor(.effectiveAccent)
@@ -130,24 +130,23 @@ struct AgentsAndStatusSettings: View {
     }
 
     private var claudeHooks: String {
-        let command = "/bin/sh '\(hookPath)' claude"
-        let entry = #"[{"hooks":[{"type":"command","command":"\#(command)"}]}]"#
-        let toolEntry = #"[{"matcher":"*","hooks":[{"type":"command","command":"\#(command)"}]}]"#
-        return """
-        {
-          "hooks": {
-            "UserPromptSubmit": \(entry),
-            "Stop": \(entry),
-            "Notification": \(entry),
-            "SessionEnd": \(entry),
-            "PostToolUse": \(toolEntry)
-          }
-        }
-        """
+        hooksJSON(source: "claude", events: ["UserPromptSubmit", "Stop", "Notification", "SessionEnd"], toolEvents: ["PreToolUse", "PostToolUse"])
     }
 
-    private var codexNotify: String {
-        #"notify = ["/bin/sh", "\#(hookPath)", "codex"]"#
+    private var codexHooks: String {
+        hooksJSON(
+            source: "codex",
+            events: ["UserPromptSubmit", "Stop", "Interrupt", "SessionEnd"],
+            toolEvents: ["PermissionRequest", "PreToolUse", "PostToolUse"]
+        )
+    }
+
+    private func hooksJSON(source: String, events: [String], toolEvents: [String]) -> String {
+        let command = "/bin/sh '\(hookPath)' \(source)"
+        let entry = #"[{"hooks":[{"type":"command","command":"\#(command)"}]}]"#
+        let toolEntry = #"[{"matcher":"*","hooks":[{"type":"command","command":"\#(command)"}]}]"#
+        let lines = events.map { "    \"\($0)\": \(entry)" } + toolEvents.map { "    \"\($0)\": \(toolEntry)" }
+        return "{\n  \"hooks\": {\n" + lines.joined(separator: ",\n") + "\n  }\n}"
     }
 
     private func copy(_ text: String) {

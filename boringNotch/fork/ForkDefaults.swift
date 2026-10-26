@@ -19,6 +19,8 @@ extension Defaults.Keys {
     // Amphetamine
     static let showAmphetamineButton = Key<Bool>("showAmphetamineButton", default: true)
     static let autoAmphetamineForAgents = Key<Bool>("autoAmphetamineForAgents", default: true)
+    /// Whether the running Amphetamine session was started automatically for agents (survives app restarts).
+    static let amphetamineStartedForAgents = Key<Bool>("amphetamineStartedForAgents", default: false)
 
     // VPN
     static let showVPNStatus = Key<Bool>("showVPNStatus", default: true)

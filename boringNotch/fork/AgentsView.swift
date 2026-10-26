@@ -57,16 +57,7 @@ struct AgentsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(agents.sessions) { session in
-                        Button {
-                            guard !session.cwd.isEmpty else { return }
-                            Task {
-                                _ = await XPCHelperClient.shared.openFolder(path: session.cwd, withApplication: Defaults[.agentFolderApp])
-                            }
-                        } label: {
-                            AgentSessionRow(session: session)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .help(session.cwd)
+                        AgentSessionRow(session: session)
                     }
 
                     if !devServers.servers.isEmpty {
@@ -172,36 +163,59 @@ struct AgentsView: View {
 
 struct AgentSessionRow: View {
     let session: AgentSession
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 8) {
             AgentStateIcon(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.project)
+                Text("\(session.displayTitle) — \(actionText)")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                Text("\(session.source.displayName) · \(stateText)")
+                    .truncationMode(.middle)
+                Text("\(session.project) · \(session.source.displayName)")
                     .font(.caption2)
                     .foregroundStyle(.gray)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
-            Text(session.updatedAt, style: .relative)
-                .font(.caption2)
-                .foregroundStyle(.gray)
-                .monospacedDigit()
-                .lineLimit(1)
+            if hovering && !session.cwd.isEmpty {
+                Button {
+                    Task {
+                        _ = await XPCHelperClient.shared.openFolder(path: session.cwd, withApplication: Defaults[.agentFolderApp])
+                    }
+                } label: {
+                    Image(systemName: "folder")
+                        .foregroundStyle(.gray)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .help("Open \(session.cwd)")
+            } else {
+                Text(session.updatedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.gray)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(hovering ? 0.1 : 0.06)))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture { AgentActivityManager.shared.openChat(session) }
+        .help("Open chat in \(session.source.displayName)")
     }
 
-    private var stateText: String {
+    private var actionText: String {
         switch session.state {
-        case .working: return String(localized: "working")
-        case .waiting: return String(localized: "needs your input")
-        case .finished: return String(localized: "done")
+        case .working:
+            return session.tool.isEmpty ? String(localized: "working") : session.tool
+        case .waiting:
+            return String(localized: "needs your input")
+        case .finished:
+            return String(localized: "done")
         }
     }
 }

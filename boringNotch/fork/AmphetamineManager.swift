@@ -19,7 +19,9 @@ final class AmphetamineManager: ObservableObject {
     /// Seconds left in the current session; 0 means unlimited.
     @Published private(set) var timeRemaining: Int = 0
     /// True when the current session was started automatically for running agents.
-    @Published private(set) var startedForAgents = false
+    @Published private(set) var startedForAgents = Defaults[.amphetamineStartedForAgents] {
+        didSet { Defaults[.amphetamineStartedForAgents] = startedForAgents }
+    }
 
     private let scriptQueue = DispatchQueue(label: "boringNotch.amphetamine")
     private var pollTimer: Timer?
