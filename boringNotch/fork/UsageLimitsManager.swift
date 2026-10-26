@@ -2,7 +2,7 @@
 //  UsageLimitsManager.swift
 //  boringNotch
 //
-//  Subscription limits of Claude and every configured Codex account, read through the XPC helper.
+//  Subscription limits of Claude (from its statusLine bridge) and every configured Codex account (through the XPC helper).
 //  Refreshed every few minutes in the background (for warnings) and more often while the Agents tab is open.
 //
 
@@ -46,7 +46,7 @@ struct UsageLimits: Identifiable, Equatable {
         case nil: return nil
         case "notInstalled": return String(localized: "CLI not found")
         case "notLoggedIn": return String(localized: "Not signed in")
-        case "parseFailed": return String(localized: "Unrecognized /usage output")
+        case "noStatusLine": return String(localized: "No data yet: install the statusLine in Settings")
         default: return String(localized: "Couldn't read limits")
         }
     }
@@ -77,6 +77,7 @@ final class UsageLimitsManager: ObservableObject {
     /// Last warning level shown per account and 5-hour window, so each threshold warns once.
     private var warned: [String: (resetsAt: Date?, level: Int)] = [:]
     private var settingsObserver: AnyCancellable?
+    private var claudeWatcher: DispatchSourceFileSystemObject?
 
     private init() {}
 
@@ -85,6 +86,7 @@ final class UsageLimitsManager: ObservableObject {
         settingsObserver = Defaults.publisher(keys: .codexAccounts, .showUsageLimits, options: [])
             .receive(on: DispatchQueue.main)
             .sink { _ in Task { @MainActor in UsageLimitsManager.shared.refresh(force: true) } }
+        watchClaudeFile()
         refresh(force: true)
         schedule()
     }
@@ -120,12 +122,12 @@ final class UsageLimitsManager: ObservableObject {
         lastRefresh = Date()
         let accounts = Defaults[.codexAccounts]
         Task {
-            async let claude = Self.readClaude(previous: limits.first { $0.source == .claude })
+            let claude = Self.readClaude()
             var codex: [UsageLimits] = []
             for account in accounts {
                 codex.append(await Self.readCodex(account, previous: limits.first { $0.id == "codex-\(account.id)" }))
             }
-            let updated = [await claude] + codex
+            let updated = [claude] + codex
             if updated != limits { limits = updated }
             refreshing = false
             checkWarnings()
@@ -140,18 +142,44 @@ final class UsageLimitsManager: ObservableObject {
 
     // MARK: Reading
 
-    private static func readClaude(previous: UsageLimits?) async -> UsageLimits {
+    /// Written by fork/claude-statusline.sh into this app's container after every Claude Code response.
+    static var claudeLimitsFile: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("claude-limits.json")
+    }
+
+    private static func readClaude() -> UsageLimits {
         var result = UsageLimits(id: "claude", source: .claude, title: "Claude")
-        guard let data = await XPCHelperClient.shared.claudeUsage(),
+        guard let data = try? Data(contentsOf: claudeLimitsFile),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return keepingPrevious(previous, into: result, error: "failed")
+            result.error = "noStatusLine"
+            return result
         }
-        if let error = json["error"] as? String { return keepingPrevious(previous, into: result, error: error) }
         result.fiveHour = window(json["fiveHour"], used: "used", resets: "resetsAt")
         result.week = window(json["week"], used: "used", resets: "resetsAt")
-        result.updatedAt = Date()
+        result.updatedAt = (json["updatedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
         return result
+    }
+
+    /// Re-reads Claude's numbers as soon as the statusLine bridge rewrites the file.
+    private func watchClaudeFile() {
+        let directory = Self.claudeLimitsFile.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let descriptor = open(directory.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: .write, queue: .main)
+        source.setEventHandler { UsageLimitsManager.shared.reloadClaude() }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        claudeWatcher = source
+    }
+
+    private func reloadClaude() {
+        guard Defaults[.showUsageLimits] else { return }
+        let claude = Self.readClaude()
+        guard let index = limits.firstIndex(where: { $0.id == "claude" }), limits[index] != claude else { return }
+        limits[index] = claude
+        checkWarnings()
     }
 
     private static func readCodex(_ account: CodexAccount, previous: UsageLimits?) async -> UsageLimits {

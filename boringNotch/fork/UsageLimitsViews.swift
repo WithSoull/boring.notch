@@ -115,6 +115,9 @@ struct UsageLimitsSettings: View {
     @Default(.codexAccounts) private var accounts
     @ObservedObject private var manager = UsageLimitsManager.shared
     @State private var signingIn: UUID?
+    @State private var copiedStatusLine = false
+
+    private static let statusLineJSON = #""statusLine": {"type": "command", "command": "/bin/sh '/Applications/Boring Notch.app/Contents/Resources/claude-statusline.sh'"}"#
 
     var body: some View {
         Section {
@@ -125,9 +128,19 @@ struct UsageLimitsSettings: View {
 
             HStack {
                 AgentSourceBadge(source: .claude, size: 16)
-                Text("Claude")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Claude")
+                    Text("statusLine in ~/.claude/settings.json")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 status(for: manager.limits.first { $0.id == "claude" })
+                Button(copiedStatusLine ? "Copied" : "Copy statusLine") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(Self.statusLineJSON, forType: .string)
+                    copiedStatusLine = true
+                }
             }
 
             ForEach($accounts) { $account in
@@ -173,7 +186,7 @@ struct UsageLimitsSettings: View {
                     .buttonStyle(.borderless)
             }
         } footer: {
-            Text("Claude limits come from `claude -p /usage` (no model request). Each Codex account is its own CODEX_HOME folder, read through the local `codex app-server`; \"Sign in\" opens the official ChatGPT login in your browser. Tokens stay with the CLIs.")
+            Text("Claude limits come from Claude Code's statusLine: it runs after each response (terminal and desktop) and passes the limits to Boring Notch; add the copied line to ~/.claude/settings.json. Each Codex account is its own CODEX_HOME folder, read through the local `codex app-server`; \"Sign in\" opens the official ChatGPT login in your browser. Tokens stay with the CLIs.")
         }
     }
 

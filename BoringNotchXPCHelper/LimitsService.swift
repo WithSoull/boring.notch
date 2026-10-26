@@ -2,92 +2,14 @@
 //  LimitsService.swift
 //  BoringNotchXPCHelper
 //
-//  Subscription limits through the agents' own CLIs, never their tokens:
-//  Claude Code's `/usage` command (no model call) and Codex's local `codex app-server` JSON-RPC.
-//  Each Codex account is a separate CODEX_HOME folder.
+//  Codex subscription limits through the local `codex app-server` JSON-RPC, never its tokens.
+//  Each Codex account is a separate CODEX_HOME folder. (Claude limits arrive via its statusLine, see fork/claude-statusline.sh.)
 //
 
 import Foundation
 
 extension BoringNotchXPCHelper {
     private static let limitsQueue = DispatchQueue(label: "boringNotch.limits", attributes: .concurrent)
-
-    // MARK: Claude
-
-    @objc func claudeUsage(with reply: @escaping (Data?) -> Void) {
-        Self.limitsQueue.async {
-            guard let claude = Self.findExecutable("claude") else {
-                reply(Self.json(["error": "notInstalled"]))
-                return
-            }
-            let result = Self.run(
-                claude,
-                arguments: ["-p", "/usage", "--no-session-persistence", "--settings", #"{"disableAllHooks":true}"#, "--strict-mcp-config"],
-                environment: [:],
-                timeout: 45
-            )
-            guard let output = result else {
-                reply(Self.json(["error": "failed"]))
-                return
-            }
-            reply(Self.json(Self.parseClaudeUsage(output)))
-        }
-    }
-
-    /// Parses "Current session: 80% used · resets Oct 27 at 2:10am (Europe/Moscow)" and the "Current week (all models)" line.
-    static func parseClaudeUsage(_ text: String, now: Date = Date()) -> [String: Any] {
-        var result: [String: Any] = [:]
-        for (key, label) in [("fiveHour", #"Current session"#), ("week", #"Current week \(all models\)"#)] {
-            let pattern = label + #":\s*(\d+(?:\.\d+)?)%\s*used(?:\s*·\s*resets\s+(.+?)\s*\(([^)]+)\))?"#
-            guard let regex = try? NSRegularExpression(pattern: pattern),
-                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-                  let usedRange = Range(match.range(at: 1), in: text),
-                  let used = Double(text[usedRange])
-            else { continue }
-            var window: [String: Any] = ["used": used]
-            if let dateRange = Range(match.range(at: 2), in: text), let zoneRange = Range(match.range(at: 3), in: text),
-               let resets = parseResetDate(String(text[dateRange]), timeZone: TimeZone(identifier: String(text[zoneRange])), now: now) {
-                window["resetsAt"] = resets.timeIntervalSince1970
-            }
-            result[key] = window
-        }
-        if result.isEmpty {
-            result["error"] = text.localizedCaseInsensitiveContains("log in") || text.localizedCaseInsensitiveContains("login")
-                ? "notLoggedIn" : "parseFailed"
-        }
-        return result
-    }
-
-    private static func parseResetDate(_ text: String, timeZone: TimeZone?, now: Date) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone ?? .current
-        formatter.amSymbol = "am"
-        formatter.pmSymbol = "pm"
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = formatter.timeZone
-
-        for format in ["MMM d 'at' h:mma", "MMM d 'at' ha", "MMM d, yyyy 'at' h:mma", "MMM d, yyyy 'at' ha"] {
-            formatter.dateFormat = format
-            guard let parsed = formatter.date(from: text) else { continue }
-            if format.contains("yyyy") { return parsed }
-            // No year in the text: take the one that puts the reset closest after now.
-            var parts = calendar.dateComponents([.month, .day, .hour, .minute], from: parsed)
-            parts.year = calendar.component(.year, from: now)
-            guard var date = calendar.date(from: parts) else { return nil }
-            if date < now.addingTimeInterval(-86400), let next = calendar.date(byAdding: .year, value: 1, to: date) { date = next }
-            return date
-        }
-        for format in ["h:mma", "ha"] {
-            formatter.dateFormat = format
-            guard let parsed = formatter.date(from: text) else { continue }
-            let time = calendar.dateComponents([.hour, .minute], from: parsed)
-            guard var date = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: now) else { return nil }
-            if date < now, let next = calendar.date(byAdding: .day, value: 1, to: date) { date = next }
-            return date
-        }
-        return nil
-    }
 
     // MARK: Codex
 
@@ -175,27 +97,6 @@ extension BoringNotchXPCHelper {
         environment["LANG"] = "en_US.UTF-8"
         environment.merge(extra) { _, new in new }
         return environment
-    }
-
-    /// Runs a command to completion and returns its stdout; nil on launch failure, non-zero exit or timeout.
-    static func run(_ executable: String, arguments: [String], environment: [String: String], timeout: TimeInterval) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = childEnvironment(environment)
-        process.currentDirectoryURL = FileManager.default.temporaryDirectory
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
-        let timer = DispatchWorkItem { if process.isRunning { process.terminate() } }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timer)
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        timer.cancel()
-        guard process.terminationStatus == 0 else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }
 

@@ -34,8 +34,7 @@ import Foundation
     func peripheralBatteries(with reply: @escaping (Data?) -> Void)
     func microphoneStatus(with reply: @escaping (Data?) -> Void)
     func toggleMicrophone(with reply: @escaping (Data?) -> Void)
-    // Subscription limits (JSON): Claude via `claude -p /usage`, Codex via `codex app-server` for one CODEX_HOME
-    func claudeUsage(with reply: @escaping (Data?) -> Void)
+    // Codex subscription limits (JSON) via `codex app-server` for one CODEX_HOME, and its official sign-in
     func codexLimits(_ home: String, with reply: @escaping (Data?) -> Void)
     func codexLogin(_ home: String, with reply: @escaping (Bool) -> Void)
 }
