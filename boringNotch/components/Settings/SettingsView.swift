@@ -613,6 +613,7 @@ struct Media: View {
 
     var body: some View {
         Form {
+            MediaAppFilterSettings()
             Section {
                 Picker("Music Source", selection: $mediaController) {
                     ForEach(availableMediaControllers) { controller in

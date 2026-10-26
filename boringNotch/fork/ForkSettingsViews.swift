@@ -234,3 +234,71 @@ private struct AgentHooksDiagnostics: View {
         installed = await XPCHelperClient.shared.agentHooksInstalled()
     }
 }
+
+/// Media settings section: follow only chosen Now Playing apps, so browser tabs don't take over the player.
+struct MediaAppFilterSettings: View {
+    @Default(.mediaSourceBundleIDs) private var bundleIDs
+    @ObservedObject private var music = MusicManager.shared
+
+    var body: some View {
+        Section {
+            if bundleIDs.isEmpty {
+                Text("Following any app that plays media")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(bundleIDs, id: \.self) { bundleID in
+                HStack {
+                    AppIconLabel(bundleID: bundleID)
+                    Spacer()
+                    Button(role: .destructive) {
+                        bundleIDs.removeAll { $0 == bundleID }
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            Menu("Add app") {
+                if let current = music.bundleIdentifier, !current.isEmpty, !bundleIDs.contains(current) {
+                    Button("Current player: \(Self.appName(current))") { bundleIDs.append(current) }
+                    Divider()
+                }
+                ForEach(runningApps, id: \.self) { bundleID in
+                    Button(Self.appName(bundleID)) { bundleIDs.append(bundleID) }
+                }
+            }
+        } header: {
+            Text("Media apps")
+        } footer: {
+            Text("When set, the notch shows music only from these apps and ignores others, such as browser tabs. Applies to the Now Playing source.")
+        }
+    }
+
+    private var runningApps: [String] {
+        NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap(\.bundleIdentifier)
+            .filter { !bundleIDs.contains($0) && $0 != Bundle.main.bundleIdentifier }
+            .sorted { Self.appName($0).localizedCaseInsensitiveCompare(Self.appName($1)) == .orderedAscending }
+    }
+
+    static func appName(_ bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return bundleID }
+        return FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    }
+}
+
+private struct AppIconLabel: View {
+    let bundleID: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable()
+                    .frame(width: 18, height: 18)
+            }
+            Text(MediaAppFilterSettings.appName(bundleID))
+        }
+    }
+}

@@ -2,7 +2,7 @@
 //  HeaderStatusButtons.swift
 //  boringNotch
 //
-//  VPN and Amphetamine controls shown on the right side of the open notch header.
+//  Microphone, VPN and Amphetamine controls shown on the left side of the open notch header.
 //
 
 import Defaults
@@ -16,7 +16,7 @@ struct HeaderStatusButtons: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            DeviceHeaderControls()
+            MicrophoneHeaderButton()
             if showVPNStatus && vpn.status != .notFound {
                 Button(action: vpn.toggle) {
                     HStack(spacing: 4) {

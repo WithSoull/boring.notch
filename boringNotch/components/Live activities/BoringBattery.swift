@@ -203,10 +203,13 @@ struct BoringBatteryView: View {
         }) {
             HStack {
                 if textOnly {
-                    Text("\(Int32(levelBattery))%")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(percentageColor)
-                        .monospacedDigit()
+                    HStack(spacing: 3) {
+                        Image(systemName: "laptopcomputer")
+                        Text("\(Int32(levelBattery))%")
+                            .monospacedDigit()
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(percentageColor)
                 } else {
                     if Defaults[.showBatteryPercentage] {
                         Text("\(Int32(levelBattery))%")

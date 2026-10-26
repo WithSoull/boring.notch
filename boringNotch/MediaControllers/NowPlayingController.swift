@@ -7,6 +7,7 @@
 
 import AppKit
 import Combine
+import Defaults
 import Foundation
 
 final class NowPlayingController: ObservableObject, MediaControllerProtocol {
@@ -225,10 +226,26 @@ final class NowPlayingController: ObservableObject, MediaControllerProtocol {
         }
     }
 
+    private var streamBundleIdentifier = ""
+
     // MARK: - Update Methods
     private func handleAdapterUpdate(_ update: NowPlayingUpdate) async {
         let payload = update.payload
         let diff = update.diff ?? false
+
+        // Tracked separately from playbackState: a filtered-out app's diffs must not inherit the chosen player's id.
+        streamBundleIdentifier = payload.parentApplicationBundleIdentifier ?? payload.bundleIdentifier
+            ?? (diff ? streamBundleIdentifier : "")
+        let allowed = Defaults[.mediaSourceBundleIDs]
+        if !allowed.isEmpty, !streamBundleIdentifier.isEmpty, !allowed.contains(streamBundleIdentifier) {
+            // Another app (e.g. a browser tab) took over Now Playing: keep the chosen player's state,
+            // and clear it once none of the chosen players is running.
+            let chosenRunning = allowed.contains { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty }
+            if !chosenRunning && !playbackState.bundleIdentifier.isEmpty {
+                playbackState = PlaybackState(bundleIdentifier: "")
+            }
+            return
+        }
 
         var newPlaybackState = PlaybackState(bundleIdentifier: playbackState.bundleIdentifier)
         

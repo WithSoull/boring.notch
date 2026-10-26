@@ -11,6 +11,8 @@ let closedNotchSideWidth: CGFloat = 165
 /// Compact live activity layout for the closed notch: content to the left and right of the physical notch.
 struct ClosedNotchSidesView<Leading: View, Trailing: View>: View {
     @EnvironmentObject var vm: BoringViewModel
+    /// Adds the muted-microphone badge at the trailing end.
+    var showsMicBadge = true
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -24,7 +26,10 @@ struct ClosedNotchSidesView<Leading: View, Trailing: View>: View {
                 .fill(.black)
                 .frame(width: vm.closedNotchSize.width - 12)
 
-            HStack(spacing: 6) { trailing }
+            HStack(spacing: 6) {
+                trailing
+                if showsMicBadge { MicMutedBadge() }
+            }
                 .frame(width: closedNotchSideWidth, alignment: .trailing)
                 .padding(.trailing, 6)
         }

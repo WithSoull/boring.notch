@@ -25,6 +25,7 @@ struct ContentView: View {
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var calendarManager = CalendarManager.shared
     @ObservedObject var agentActivity = AgentActivityManager.shared
+    @ObservedObject var devices = DeviceStatusManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -64,12 +65,14 @@ struct ContentView: View {
         case agent(AgentSession)
         case event(EventModel)
         case workingAgents([AgentSession])
+        case microphone(notice: String?)
 
         var key: String {
             switch self {
             case .agent(let session): return "agent-\(session.id)-\(session.state)"
             case .event(let event): return "event-\(event.id)"
             case .workingAgents: return "working"
+            case .microphone(let notice): return "mic-\(notice ?? "muted")"
             }
         }
     }
@@ -84,13 +87,17 @@ struct ContentView: View {
     }
 
     /// Compact side activity shown in the closed notch instead of music/face, if any.
-    /// Priority: agent banner (briefly) > upcoming event (with the album art while music plays) > music > working agents.
+    /// Priority: agent banner and microphone notice (briefly) > upcoming event (with the album art while music plays)
+    /// > music > working agents > muted microphone. A muted mic also shows as a badge on the other activities.
     private var closedSideActivity: ClosedSideActivity? {
         guard vm.notchState == .closed, !vm.hideOnClosed, !coordinator.expandingView.show else { return nil }
         if let session = agentActivity.banner { return .agent(session) }
+        if let notice = devices.microphoneNotice { return .microphone(notice: notice) }
         if let event = calendarManager.upcomingEvent { return .event(event) }
+        if isMusicActivityShown { return nil }
         // With music playing, working agents are shown as a dot on the album art instead.
-        if !workingAgents.isEmpty && !isMusicActivityShown { return .workingAgents(workingAgents) }
+        if !workingAgents.isEmpty { return .workingAgents(workingAgents) }
+        if devices.microphone.muted == true { return .microphone(notice: nil) }
         return nil
     }
 
@@ -246,12 +253,6 @@ struct ContentView: View {
                 }
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if vm.notchState == .closed && !vm.hideOnClosed {
-                MicrophoneClosedIndicator()
-                    .offset(y: vm.effectiveClosedNotchHeight + 4)
-            }
-        }
         .padding(.bottom, 8)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
         .compositingGroup()
@@ -350,6 +351,8 @@ struct ContentView: View {
                                   )
                               case .workingAgents(let sessions):
                                   WorkingAgentsActivity(sessions: sessions)
+                              case .microphone(let notice):
+                                  MicrophoneActivity(notice: notice)
                               }
                           }
                           .id(activity.key)
@@ -411,16 +414,21 @@ struct ContentView: View {
               }
               .zIndex(2)
             if vm.notchState == .open {
-                VStack {
-                    switch coordinator.currentView {
-                    case .home:
-                        NotchHomeView(albumArtNamespace: albumArtNamespace)
-                    case .shelf:
-                        ShelfView()
-                    case .snippets:
-                        SnippetsView()
-                    case .agents:
-                        AgentsView()
+                HStack(alignment: .top, spacing: 6) {
+                    TabSelectionView()
+                        .font(.system(size: 13))
+                        .padding(.top, 4)
+                    VStack {
+                        switch coordinator.currentView {
+                        case .home:
+                            NotchHomeView(albumArtNamespace: albumArtNamespace)
+                        case .shelf:
+                            ShelfView()
+                        case .snippets:
+                            SnippetsView()
+                        case .agents:
+                            AgentsView()
+                        }
                     }
                 }
                 .transition(
@@ -542,6 +550,10 @@ struct ContentView: View {
                         .mask {
                             AudioSpectrumView(isPlaying: $musicManager.isPlaying)
                                 .frame(width: 16, height: 12)
+                        }
+                        .overlay(alignment: .topTrailing) {
+                            MicMutedBadge(size: 9)
+                                .offset(x: 2, y: -4)
                         }
                 } else {
                     LottieAnimationContainer()

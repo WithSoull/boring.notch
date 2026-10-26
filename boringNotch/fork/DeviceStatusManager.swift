@@ -13,7 +13,14 @@ struct PeripheralBattery: Decodable, Identifiable, Equatable {
     var percent: Int? {
         // The case should not hide a low earbud battery.
         let earbuds = [levels["left"], levels["right"]].compactMap { $0 }
-        return earbuds.min() ?? levels["main"] ?? levels["case"]
+        let halves = [levels["main"], levels["half2"]].compactMap { $0 }
+        return earbuds.min() ?? halves.min() ?? levels["case"]
+    }
+
+    /// Header text: both halves of a split keyboard ("82·64%"), otherwise the single percent.
+    var shortText: String {
+        if let main = levels["main"], let second = levels["half2"] { return "\(main)·\(second)%" }
+        return percent.map { "\($0)%" } ?? "—"
     }
 }
 
@@ -40,8 +47,24 @@ final class DeviceStatusManager: ObservableObject {
     private var microphoneTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var watchers = 0
+    /// Devices as reported by system_profiler, before BLE battery levels are merged in.
+    private var reportedPeripherals: [PeripheralBattery] = []
+    private var bleObserver: AnyCancellable?
 
-    private init() {}
+    private init() {
+        bleObserver = BLEBatteryMonitor.shared.$levels
+            .sink { levels in Task { @MainActor in DeviceStatusManager.shared.mergePeripherals(ble: levels) } }
+    }
+
+    /// Fills in levels macOS doesn't report from the device's own Battery Service; a second level is the other half.
+    private func mergePeripherals(ble: [String: [Int]]) {
+        peripherals = reportedPeripherals.map { device in
+            guard device.levels.isEmpty, let readings = ble[device.name], let main = readings.first else { return device }
+            var levels = ["main": main]
+            if readings.count > 1 { levels["half2"] = readings[1] }
+            return PeripheralBattery(id: device.id, name: device.name, kind: device.kind, levels: levels)
+        }
+    }
 
     func start() {
         guard microphoneTimer == nil else { return }
@@ -70,15 +93,18 @@ final class DeviceStatusManager: ObservableObject {
 
     func refreshBatteries() {
         guard batteryTask == nil, Defaults[.showPeripheralBatteries] else { return }
+        BLEBatteryMonitor.shared.refresh()
         batteryTask = Task {
             defer { batteryTask = nil }
             guard let data = await XPCHelperClient.shared.peripheralBatteries(),
                   let devices = try? JSONDecoder().decode([PeripheralBattery].self, from: data) else {
+                reportedPeripherals = []
                 peripherals = []
                 batteryUnavailable = true
                 return
             }
-            peripherals = devices.sorted { ($0.kind, $0.name, $0.id) < ($1.kind, $1.name, $1.id) }
+            reportedPeripherals = devices.sorted { ($0.kind, $0.name, $0.id) < ($1.kind, $1.name, $1.id) }
+            mergePeripherals(ble: BLEBatteryMonitor.shared.levels)
             batteryUnavailable = false
         }
     }

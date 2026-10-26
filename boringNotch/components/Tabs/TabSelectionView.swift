@@ -27,14 +27,14 @@ struct TabSelectionView: View {
     @Namespace var animation
     @State private var hoverTask: Task<Void, Never>?
     var body: some View {
-        HStack(spacing: 0) {
+        // Vertical column on the left side of the open notch.
+        VStack(spacing: 2) {
             ForEach(coordinator.visibleTabs) { tab in
                     TabButton(label: tab.label, icon: tab.icon, selected: coordinator.currentView == tab.view) {
                         withAnimation(.smooth) {
                             coordinator.currentView = tab.view
                         }
                     }
-                    .frame(height: 26)
                     .onHover { hovering in
                         hoverTask?.cancel()
                         guard hovering, tab.view != coordinator.currentView else { return }
@@ -62,7 +62,6 @@ struct TabSelectionView: View {
                     }
             }
         }
-        .clipShape(Capsule())
     }
 }
 

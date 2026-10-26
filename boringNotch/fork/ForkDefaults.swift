@@ -38,6 +38,9 @@ extension Defaults.Keys {
     static let showPeripheralBatteries = Key<Bool>("showPeripheralBatteries", default: true)
     static let showMicrophoneButton = Key<Bool>("showMicrophoneButton", default: true)
 
+    /// Now Playing apps the notch follows (bundle IDs); empty means any app.
+    static let mediaSourceBundleIDs = Key<[String]>("mediaSourceBundleIDs", default: [])
+
     // Shelf
     static let copyPathOnShelfDrop = Key<Bool>("copyPathOnShelfDrop", default: false)
 }
