@@ -171,10 +171,13 @@ struct AgentSessionRow: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(session.project) · \(session.source.displayName)")
-                    .font(.caption2)
-                    .foregroundStyle(.gray)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    AgentSourceBadge(source: session.source, size: 11)
+                    Text(session.project)
+                        .font(.caption2)
+                        .foregroundStyle(.gray)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             if hovering && !session.cwd.isEmpty {
@@ -250,6 +253,7 @@ struct AgentBannerActivity: View {
         } trailing: {
             Text(session.statusLabel)
                 .foregroundStyle(session.state.color)
+            AgentSourceBadge(source: session.source)
         }
     }
 }
@@ -266,6 +270,14 @@ struct WorkingAgentsActivity: View {
         } trailing: {
             Text(sessions.count > 1 ? String(localized: "\(sessions.count) working") : sessions.first?.statusLabel ?? "")
                 .foregroundStyle(AgentSession.State.working.color)
+            ForEach(sources, id: \.self) { AgentSourceBadge(source: $0) }
+        }
+    }
+
+    /// Distinct agents among the working sessions, most recent first.
+    private var sources: [AgentSession.Source] {
+        sessions.reduce(into: []) { result, session in
+            if !result.contains(session.source) { result.append(session.source) }
         }
     }
 }

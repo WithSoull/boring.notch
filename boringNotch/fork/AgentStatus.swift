@@ -94,6 +94,50 @@ struct AgentStateIcon: View {
     }
 }
 
+extension AgentSession.Source {
+    var bundleIdentifier: String {
+        switch self {
+        case .claude: return "com.anthropic.claudefordesktop"
+        case .codex: return "com.openai.codex"
+        }
+    }
+
+    /// The desktop app's icon, or nil when the app isn't installed.
+    @MainActor var appIcon: NSImage? {
+        if let cached = Self.iconCache[self] { return cached }
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        Self.iconCache[self] = icon
+        return icon
+    }
+
+    @MainActor private static var iconCache: [AgentSession.Source: NSImage?] = [:]
+}
+
+/// Small Claude / Codex badge: the app icon, or its initial when the app isn't installed.
+struct AgentSourceBadge: View {
+    let source: AgentSession.Source
+    var size: CGFloat = 12
+
+    var body: some View {
+        Group {
+            if let icon = source.appIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+            } else {
+                Text(source.displayName.prefix(1))
+                    .font(.system(size: size * 0.7, weight: .bold, design: .rounded))
+                    .foregroundStyle(.black)
+                    .frame(width: size, height: size)
+                    .background(RoundedRectangle(cornerRadius: size * 0.25).fill(.white.opacity(0.8)))
+            }
+        }
+        .frame(width: size, height: size)
+        .help(source.displayName)
+    }
+}
+
 /// Pulsing dot for "working", also overlaid on the album art while music plays.
 struct AgentWorkingDot: View {
     var size: CGFloat = 7
