@@ -168,6 +168,9 @@ extension BoringNotchXPCHelper {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         var environment = ProcessInfo.processInfo.environment
         environment["HOME"] = home
+        // Claude Code finds its subscription login in the keychain by user name; without USER it falls back to API-key mode.
+        environment["USER"] = NSUserName()
+        environment["LOGNAME"] = NSUserName()
         environment["PATH"] = "\(home)/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         environment["LANG"] = "en_US.UTF-8"
         environment.merge(extra) { _, new in new }

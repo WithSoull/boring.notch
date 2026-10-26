@@ -17,18 +17,16 @@ struct AgentsView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                UsageLimitsStrip()
-                sessionList
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            VStack(alignment: .leading, spacing: 10) {
+            sessionList
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            VStack(alignment: .leading, spacing: 9) {
                 statsSection
+                UsageLimitsList()
                 if amphetamine.isInstalled {
                     amphetamineSection
                 }
             }
-            .frame(width: 190, alignment: .topLeading)
+            .frame(width: 200, alignment: .topLeading)
         }
         .padding(.top, 6)
         .onAppear {
@@ -93,42 +91,39 @@ struct AgentsView: View {
 
     // MARK: Amphetamine
 
+    /// One line: cup (state, time left in the tooltip), session buttons, and the auto-for-agents switch.
     private var amphetamineSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: amphetamine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
-                    .foregroundStyle(amphetamine.isActive ? .orange : .gray)
-                Text(amphetamineStatus)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-            }
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-
-            HStack(spacing: 6) {
-                if amphetamine.isActive {
-                    pill("Stop") { amphetamine.stop() }
-                } else {
-                    pill("∞") { amphetamine.start() }
-                    pill("1h") { amphetamine.start(minutes: 60) }
-                    pill("3h") { amphetamine.start(minutes: 180) }
+        HStack(spacing: 5) {
+            Image(systemName: amphetamine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
+                .foregroundStyle(amphetamine.isActive ? .orange : .gray)
+                .help(amphetamineStatus)
+            if amphetamine.isActive {
+                if amphetamine.timeRemaining > 0 {
+                    Text(shortDuration(TimeInterval(amphetamine.timeRemaining)))
+                        .foregroundStyle(.white)
+                        .monospacedDigit()
                 }
+                pill("Stop") { amphetamine.stop() }
+            } else {
+                pill("∞") { amphetamine.start() }
+                pill("1h") { amphetamine.start(minutes: 60) }
+                pill("3h") { amphetamine.start(minutes: 180) }
             }
-
+            Spacer(minLength: 4)
             Button {
                 autoAmphetamine.toggle()
             } label: {
-                HStack(spacing: 8) {
-                    Text("Auto while agents work")
-                        .font(.caption)
+                HStack(spacing: 4) {
+                    Text("Auto")
                         .foregroundStyle(.gray)
                     // Custom switch: system switches render grey in the never-key notch window.
                     Capsule()
                         .fill(autoAmphetamine ? Color.green : Color.white.opacity(0.15))
-                        .frame(width: 28, height: 16)
+                        .frame(width: 26, height: 15)
                         .overlay(alignment: autoAmphetamine ? .trailing : .leading) {
                             Circle()
                                 .fill(.white)
-                                .frame(width: 12, height: 12)
+                                .frame(width: 11, height: 11)
                                 .padding(2)
                         }
                         .animation(.smooth(duration: 0.2), value: autoAmphetamine)
@@ -136,7 +131,9 @@ struct AgentsView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PlainButtonStyle())
+            .help("Keep the Mac awake while agents work")
         }
+        .font(.system(size: 11, weight: .semibold, design: .rounded))
     }
 
     private var amphetamineStatus: String {
@@ -153,8 +150,8 @@ struct AgentsView: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .frame(height: 22)
+                .padding(.horizontal, 7)
+                .frame(height: 20)
                 .background(Capsule().fill(Color.white.opacity(0.1)))
         }
         .buttonStyle(PlainButtonStyle())

@@ -14,69 +14,49 @@ func usageColor(remaining: Int, stale: Bool = false) -> Color {
     return remaining <= 10 ? .red : remaining <= 25 ? .yellow : .green
 }
 
-/// Horizontal row of compact cards, one per account: "% left" for the 5-hour window (with time to reset) and the week.
-struct UsageLimitsStrip: View {
+/// Agents tab, right column: one line per account — icon, "5h 39%" and "W 91%" left, colored. Details in the tooltip.
+struct UsageLimitsList: View {
     @ObservedObject private var manager = UsageLimitsManager.shared
 
     var body: some View {
         if !manager.limits.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 6) {
-                    ForEach(manager.limits) { UsageLimitCard(item: $0) }
-                }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(manager.limits) { UsageLimitRow(item: $0) }
             }
-            .scrollIndicators(.never)
         }
     }
 }
 
-private struct UsageLimitCard: View {
+private struct UsageLimitRow: View {
     let item: UsageLimits
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    AgentSourceBadge(source: item.agent, size: 12)
-                    Text(item.title)
+            HStack(spacing: 6) {
+                AgentSourceBadge(source: item.agent, size: 15)
+                windowText("5h", item.fiveHour)
+                windowText("W", item.week)
+                Spacer(minLength: 0)
+                if item.error != nil {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                } else if item.resetCredits > 0 {
+                    Text("⟲\(item.resetCredits)")
                         .foregroundStyle(.gray)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
-                    if item.error != nil {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.yellow)
-                    } else if item.resetCredits > 0 {
-                        Text("⟲\(item.resetCredits)")
-                            .foregroundStyle(.gray)
-                    }
                 }
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-
-                HStack(spacing: 6) {
-                    windowText("5h", item.fiveHour, now: context.date, showsReset: true)
-                    windowText("W", item.week, now: context.date, showsReset: false)
-                }
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(minWidth: 118, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white.opacity(0.06)))
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .lineLimit(1)
+            .contentShape(Rectangle())
             .help(tooltip(now: context.date))
         }
     }
 
-    private func windowText(_ label: String, _ window: UsageWindow?, now: Date, showsReset: Bool) -> Text {
+    private func windowText(_ label: String, _ window: UsageWindow?) -> Text {
         guard let window else { return Text("\(label) —").foregroundColor(.gray) }
-        var text = Text("\(label) ").foregroundColor(.gray)
+        return Text("\(label) ").foregroundColor(.gray)
             + Text("\(window.remainingPercent)%").foregroundColor(usageColor(remaining: window.remainingPercent, stale: window.isStale))
-        if showsReset, let resetsAt = window.resetsAt, resetsAt > now {
-            text = text + Text(" \(shortDuration(resetsAt.timeIntervalSince(now)))").foregroundColor(.gray)
-        }
-        return text
     }
 
     private func tooltip(now: Date) -> String {
@@ -87,7 +67,7 @@ private struct UsageLimitCard: View {
             if let resetsAt = window.resetsAt {
                 line += window.isStale
                     ? " · reset, refreshing"
-                    : " · resets \(resetsAt.formatted(date: .abbreviated, time: .shortened))"
+                    : " · resets in \(shortDuration(resetsAt.timeIntervalSince(now))) (\(resetsAt.formatted(date: .abbreviated, time: .shortened)))"
             }
             lines.append(line)
         }
