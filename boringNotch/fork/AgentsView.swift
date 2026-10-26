@@ -266,10 +266,16 @@ struct WorkingAgentsActivity: View {
             Text(sessions.first?.project ?? "")
                 .truncationMode(.tail)
         } trailing: {
-            Text(sessions.count > 1 ? String(localized: "\(sessions.count) working") : sessions.first?.statusLabel ?? "")
+            Text(label)
                 .foregroundStyle(AgentSession.State.working.color)
+                .contentTransition(.opacity)
+                .animation(.smooth(duration: 0.4), value: label)
             ForEach(sources, id: \.self) { AgentSourceBadge(source: $0, size: 18) }
         }
+    }
+
+    private var label: String {
+        sessions.count > 1 ? String(localized: "\(sessions.count) working") : sessions.first?.statusLabel ?? ""
     }
 
     /// Distinct agents among the working sessions, most recent first.

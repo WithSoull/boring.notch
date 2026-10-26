@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
+    @State private var closedRotationIndex = 0
 
     @State private var gestureProgress: CGFloat = .zero
 
@@ -64,7 +65,17 @@ struct ContentView: View {
         case agent(AgentSession)
         case event(EventModel)
         case workingAgents([AgentSession])
+
+        var key: String {
+            switch self {
+            case .agent(let session): return "agent-\(session.id)-\(session.state)"
+            case .event(let event): return "event-\(event.id)"
+            case .workingAgents: return "working"
+            }
+        }
     }
+
+    private let closedRotationInterval: TimeInterval = 10
 
     private var isMusicActivityShown: Bool {
         (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
@@ -75,14 +86,28 @@ struct ContentView: View {
         return agentActivity.sessions.filter { $0.state == .working }
     }
 
+    /// Closed-notch items that take turns every `closedRotationInterval`; nil stands for the music activity.
+    private var rotatingClosedActivities: [ClosedSideActivity?] {
+        var items: [ClosedSideActivity?] = []
+        if let event = calendarManager.upcomingEvent { items.append(.event(event)) }
+        if !workingAgents.isEmpty { items.append(.workingAgents(workingAgents)) }
+        if isMusicActivityShown && !items.isEmpty { items.append(nil) }
+        return items
+    }
+
     /// Compact side activity shown in the closed notch instead of music/face, if any.
+    /// An agent banner shows right away; otherwise the upcoming event, working agents and music rotate.
     private var closedSideActivity: ClosedSideActivity? {
         guard vm.notchState == .closed, !vm.hideOnClosed, !coordinator.expandingView.show else { return nil }
         if let session = agentActivity.banner { return .agent(session) }
-        if let event = calendarManager.upcomingEvent { return .event(event) }
-        // With music playing, working agents are shown as a dot on the album art instead.
-        if !workingAgents.isEmpty && !isMusicActivityShown { return .workingAgents(workingAgents) }
-        return nil
+        let items = rotatingClosedActivities
+        guard !items.isEmpty else { return nil }
+        return items[closedRotationIndex % items.count]
+    }
+
+    /// Changes whenever the closed notch switches what it shows; drives the cross-fade.
+    private var closedSideKey: String {
+        closedSideActivity?.key ?? (isMusicActivityShown ? "music" : "none")
     }
 
     private var computedChinWidth: CGFloat {
@@ -155,6 +180,11 @@ struct ContentView: View {
                         return view
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
+                            .animation(.smooth(duration: 0.6), value: closedSideKey)
+                    }
+                    .onReceive(Timer.publish(every: closedRotationInterval, on: .main, in: .common).autoconnect()) { _ in
+                        guard rotatingClosedActivities.count > 1, agentActivity.banner == nil else { return }
+                        closedRotationIndex += 1
                     }
                     .contentShape(Rectangle())
                     .onHover { hovering in
@@ -327,10 +357,12 @@ struct ContentView: View {
                                   WorkingAgentsActivity(sessions: sessions)
                               }
                           }
-                          .transition(.opacity)
+                          .id(activity.key)
+                          .transition(.blurReplace)
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
+                              .transition(.blurReplace)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
