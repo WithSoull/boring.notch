@@ -130,6 +130,8 @@ struct AgentsAndStatusSettings: View {
             }
 
             AgentHooksDiagnostics()
+
+            UsageLimitsSettings()
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Agents & Status")

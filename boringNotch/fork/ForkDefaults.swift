@@ -15,6 +15,16 @@ struct Snippet: Codable, Hashable, Identifiable, Defaults.Serializable {
     var value: String
 }
 
+/// A Codex account is a separate CODEX_HOME folder signed in through the official login.
+struct CodexAccount: Codable, Hashable, Identifiable, Defaults.Serializable {
+    var id = UUID()
+    /// Display name; empty means the account's email.
+    var name: String
+    var home: String
+
+    static let main = CodexAccount(id: UUID(uuidString: "00000000-0000-0000-0000-00000000C0DE")!, name: "", home: "~/.codex")
+}
+
 extension Defaults.Keys {
     // Amphetamine
     static let showAmphetamineButton = Key<Bool>("showAmphetamineButton", default: true)
@@ -40,6 +50,12 @@ extension Defaults.Keys {
 
     /// Now Playing apps the notch follows (bundle IDs); empty means any app.
     static let mediaSourceBundleIDs = Key<[String]>("mediaSourceBundleIDs", default: [])
+
+    // Subscription limits
+    static let showUsageLimits = Key<Bool>("showUsageLimits", default: true)
+    /// Closed-notch warning when a 5-hour window is nearly used up.
+    static let usageLimitWarnings = Key<Bool>("usageLimitWarnings", default: true)
+    static let codexAccounts = Key<[CodexAccount]>("codexAccounts", default: [.main])
 
     // Shelf
     static let copyPathOnShelfDrop = Key<Bool>("copyPathOnShelfDrop", default: false)

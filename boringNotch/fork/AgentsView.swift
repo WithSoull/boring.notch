@@ -17,8 +17,11 @@ struct AgentsView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            sessionList
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            VStack(alignment: .leading, spacing: 6) {
+                UsageLimitsStrip()
+                sessionList
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             VStack(alignment: .leading, spacing: 10) {
                 statsSection
                 if amphetamine.isInstalled {
@@ -31,11 +34,13 @@ struct AgentsView: View {
         .onAppear {
             stats.startWatching()
             devServers.startWatching()
+            UsageLimitsManager.shared.startWatching()
             amphetamine.refresh()
         }
         .onDisappear {
             stats.stopWatching()
             devServers.stopWatching()
+            UsageLimitsManager.shared.stopWatching()
         }
     }
 
@@ -77,14 +82,12 @@ struct AgentsView: View {
 
     // MARK: Stats
 
+    /// One line: small rings with the load in colored percent text.
     private var statsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            StatBar(label: "CPU", value: stats.cpuUsage, detail: "\(Int(stats.cpuUsage * 100))%")
-            StatBar(
-                label: "RAM",
-                value: stats.memoryFraction,
-                detail: String(format: "%.1f / %.0f GB", Double(stats.memoryUsed) / 1_073_741_824, Double(stats.memoryTotal) / 1_073_741_824)
-            )
+        HStack(spacing: 14) {
+            StatGauge(label: "CPU", value: stats.cpuUsage)
+            StatGauge(label: "RAM", value: stats.memoryFraction)
+                .help(String(format: "%.1f / %.0f GB", Double(stats.memoryUsed) / 1_073_741_824, Double(stats.memoryTotal) / 1_073_741_824))
         }
     }
 
@@ -239,29 +242,29 @@ private struct RowErrorText: View {
     }
 }
 
-private struct StatBar: View {
+private struct StatGauge: View {
     let label: String
+    /// 0...1
     let value: Double
-    let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(label).foregroundStyle(.white)
-                Spacer()
-                Text(detail).foregroundStyle(.gray).monospacedDigit()
+        HStack(spacing: 5) {
+            ZStack {
+                Circle().stroke(Color.white.opacity(0.12), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: min(max(value, 0), 1))
+                    .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
             }
-            .font(.system(size: 11, weight: .medium, design: .rounded))
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.1))
-                    Capsule()
-                        .fill(color)
-                        .frame(width: geo.size.width * min(max(value, 0), 1))
-                }
-            }
-            .frame(height: 5)
+            .frame(width: 14, height: 14)
+            Text(label)
+                .foregroundStyle(.gray)
+            Text("\(Int(value * 100))%")
+                .foregroundStyle(color)
+                .monospacedDigit()
         }
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .animation(.smooth(duration: 0.4), value: value)
     }
 
     private var color: Color {

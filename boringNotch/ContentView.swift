@@ -26,6 +26,7 @@ struct ContentView: View {
     @ObservedObject var calendarManager = CalendarManager.shared
     @ObservedObject var agentActivity = AgentActivityManager.shared
     @ObservedObject var devices = DeviceStatusManager.shared
+    @ObservedObject var usageLimits = UsageLimitsManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -66,6 +67,7 @@ struct ContentView: View {
         case event(EventModel)
         case workingAgents([AgentSession])
         case microphone(notice: String?)
+        case limit(UsageLimits)
 
         var key: String {
             switch self {
@@ -73,6 +75,7 @@ struct ContentView: View {
             case .event(let event): return "event-\(event.id)"
             case .workingAgents: return "working"
             case .microphone(let notice): return "mic-\(notice ?? "muted")"
+            case .limit(let item): return "limit-\(item.id)"
             }
         }
     }
@@ -93,6 +96,7 @@ struct ContentView: View {
         guard vm.notchState == .closed, !vm.hideOnClosed, !coordinator.expandingView.show else { return nil }
         if let session = agentActivity.banner { return .agent(session) }
         if let notice = devices.microphoneNotice { return .microphone(notice: notice) }
+        if let item = usageLimits.warning { return .limit(item) }
         if let event = calendarManager.upcomingEvent { return .event(event) }
         if isMusicActivityShown { return nil }
         // With music playing, working agents are shown as a dot on the album art instead.
@@ -353,6 +357,8 @@ struct ContentView: View {
                                   WorkingAgentsActivity(sessions: sessions)
                               case .microphone(let notice):
                                   MicrophoneActivity(notice: notice)
+                              case .limit(let item):
+                                  UsageLimitActivity(item: item)
                               }
                           }
                           .id(activity.key)
