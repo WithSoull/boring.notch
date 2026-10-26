@@ -28,7 +28,6 @@ struct ContentView: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
-    @State private var closedRotationIndex = 0
 
     @State private var gestureProgress: CGFloat = .zero
 
@@ -75,8 +74,6 @@ struct ContentView: View {
         }
     }
 
-    private let closedRotationInterval: TimeInterval = 10
-
     private var isMusicActivityShown: Bool {
         (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled
     }
@@ -86,23 +83,15 @@ struct ContentView: View {
         return agentActivity.sessions.filter { $0.state == .working }
     }
 
-    /// Closed-notch items that take turns every `closedRotationInterval`; nil stands for the music activity.
-    private var rotatingClosedActivities: [ClosedSideActivity?] {
-        var items: [ClosedSideActivity?] = []
-        if let event = calendarManager.upcomingEvent { items.append(.event(event)) }
-        if !workingAgents.isEmpty { items.append(.workingAgents(workingAgents)) }
-        if isMusicActivityShown && !items.isEmpty { items.append(nil) }
-        return items
-    }
-
     /// Compact side activity shown in the closed notch instead of music/face, if any.
-    /// An agent banner shows right away; otherwise the upcoming event, working agents and music rotate.
+    /// Priority: agent banner (briefly) > upcoming event (with the album art while music plays) > music > working agents.
     private var closedSideActivity: ClosedSideActivity? {
         guard vm.notchState == .closed, !vm.hideOnClosed, !coordinator.expandingView.show else { return nil }
         if let session = agentActivity.banner { return .agent(session) }
-        let items = rotatingClosedActivities
-        guard !items.isEmpty else { return nil }
-        return items[closedRotationIndex % items.count]
+        if let event = calendarManager.upcomingEvent { return .event(event) }
+        // With music playing, working agents are shown as a dot on the album art instead.
+        if !workingAgents.isEmpty && !isMusicActivityShown { return .workingAgents(workingAgents) }
+        return nil
     }
 
     /// Changes whenever the closed notch switches what it shows; drives the cross-fade.
@@ -181,10 +170,6 @@ struct ContentView: View {
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
                             .animation(.smooth(duration: 0.6), value: closedSideKey)
-                    }
-                    .onReceive(Timer.publish(every: closedRotationInterval, on: .main, in: .common).autoconnect()) { _ in
-                        guard rotatingClosedActivities.count > 1, agentActivity.banner == nil else { return }
-                        closedRotationIndex += 1
                     }
                     .contentShape(Rectangle())
                     .onHover { hovering in
@@ -352,7 +337,11 @@ struct ContentView: View {
                               case .agent(let session):
                                   AgentBannerActivity(session: session)
                               case .event(let event):
-                                  UpcomingEventActivity(event: event)
+                                  UpcomingEventActivity(
+                                      event: event,
+                                      albumArt: isMusicActivityShown ? musicManager.albumArt : nil,
+                                      agentsWorking: !workingAgents.isEmpty
+                                  )
                               case .workingAgents(let sessions):
                                   WorkingAgentsActivity(sessions: sessions)
                               }

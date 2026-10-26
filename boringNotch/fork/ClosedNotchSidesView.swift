@@ -37,12 +37,29 @@ struct ClosedNotchSidesView<Leading: View, Trailing: View>: View {
 
 struct UpcomingEventActivity: View {
     let event: EventModel
+    /// Album art of the playing track, shown instead of the calendar dot.
+    var albumArt: NSImage?
+    var agentsWorking = false
 
     var body: some View {
         ClosedNotchSidesView {
-            Circle()
-                .fill(Color(event.calendar.color))
-                .frame(width: 7, height: 7)
+            if let albumArt {
+                Image(nsImage: albumArt)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 20, height: 20)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay(alignment: .topTrailing) {
+                        if agentsWorking {
+                            AgentWorkingDot(size: 6, outlined: true)
+                                .offset(x: 2, y: -2)
+                        }
+                    }
+            } else {
+                Circle()
+                    .fill(Color(event.calendar.color))
+                    .frame(width: 7, height: 7)
+            }
             Text(event.title)
                 .truncationMode(.tail)
         } trailing: {

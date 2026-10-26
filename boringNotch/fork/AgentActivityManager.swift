@@ -180,7 +180,7 @@ final class AgentActivityManager: ObservableObject {
         bannerTask?.cancel()
         banner = session
         bannerTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(session.state == .waiting ? 10 : 6))
+            try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
             self?.banner = nil
         }
