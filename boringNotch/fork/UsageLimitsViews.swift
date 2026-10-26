@@ -130,7 +130,7 @@ struct UsageLimitsSettings: View {
                 AgentSourceBadge(source: .claude, size: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Claude")
-                    Text("statusLine in ~/.claude/settings.json")
+                    Text("claude -p /usage · optional statusLine for terminal sessions")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -186,7 +186,7 @@ struct UsageLimitsSettings: View {
                     .buttonStyle(.borderless)
             }
         } footer: {
-            Text("Claude limits come from Claude Code's statusLine: it runs after each response (terminal and desktop) and passes the limits to Boring Notch; add the copied line to ~/.claude/settings.json. Each Codex account is its own CODEX_HOME folder, read through the local `codex app-server`; \"Sign in\" opens the official ChatGPT login in your browser. Tokens stay with the CLIs.")
+            Text("Claude limits come from `claude -p /usage` (no model request). Optionally add the copied statusLine to ~/.claude/settings.json so terminal sessions update them right after each response. Each Codex account is its own CODEX_HOME folder, read through the local `codex app-server`; \"Sign in\" opens the official ChatGPT login in your browser. Tokens stay with the CLIs.")
         }
     }
 

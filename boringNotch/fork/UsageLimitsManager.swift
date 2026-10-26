@@ -2,7 +2,8 @@
 //  UsageLimitsManager.swift
 //  boringNotch
 //
-//  Subscription limits of Claude (from its statusLine bridge) and every configured Codex account (through the XPC helper).
+//  Subscription limits of Claude and every configured Codex account, read through the XPC helper
+//  (Claude also from its statusLine bridge when a terminal session reports newer numbers).
 //  Refreshed every few minutes in the background (for warnings) and more often while the Agents tab is open.
 //
 
@@ -46,7 +47,7 @@ struct UsageLimits: Identifiable, Equatable {
         case nil: return nil
         case "notInstalled": return String(localized: "CLI not found")
         case "notLoggedIn": return String(localized: "Not signed in")
-        case "noStatusLine": return String(localized: "No data yet: install the statusLine in Settings")
+        case "parseFailed": return String(localized: "Unrecognized /usage output")
         default: return String(localized: "Couldn't read limits")
         }
     }
@@ -122,7 +123,7 @@ final class UsageLimitsManager: ObservableObject {
         lastRefresh = Date()
         let accounts = Defaults[.codexAccounts]
         Task {
-            let claude = Self.readClaude()
+            let claude = await Self.readClaude(previous: limits.first { $0.id == "claude" })
             var codex: [UsageLimits] = []
             for account in accounts {
                 codex.append(await Self.readCodex(account, previous: limits.first { $0.id == "codex-\(account.id)" }))
@@ -147,14 +148,32 @@ final class UsageLimitsManager: ObservableObject {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("claude-limits.json")
     }
 
-    private static func readClaude() -> UsageLimits {
+    /// Claude: `claude -p /usage` through the helper (works for desktop chats too); the statusLine file wins when newer.
+    private static func readClaude(previous: UsageLimits?) async -> UsageLimits {
+        let fromStatusLine = readClaudeFile()
         var result = UsageLimits(id: "claude", source: .claude, title: "Claude")
-        guard let data = try? Data(contentsOf: claudeLimitsFile),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            result.error = "noStatusLine"
+        if let data = await XPCHelperClient.shared.claudeUsage(),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let error = json["error"] as? String {
+                return fromStatusLine ?? keepingPrevious(previous, into: result, error: error)
+            }
+            result.fiveHour = window(json["fiveHour"], used: "used", resets: "resetsAt")
+            result.week = window(json["week"], used: "used", resets: "resetsAt")
+            result.updatedAt = Date()
+            if let fromStatusLine, let fileDate = fromStatusLine.updatedAt, fileDate > Date().addingTimeInterval(-5) {
+                return fromStatusLine
+            }
             return result
         }
+        return fromStatusLine ?? keepingPrevious(previous, into: result, error: "failed")
+    }
+
+    /// Numbers saved by fork/claude-statusline.sh (terminal Claude Code runs it after each response); nil if none.
+    private static func readClaudeFile() -> UsageLimits? {
+        guard let data = try? Data(contentsOf: claudeLimitsFile),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        var result = UsageLimits(id: "claude", source: .claude, title: "Claude")
         result.fiveHour = window(json["fiveHour"], used: "used", resets: "resetsAt")
         result.week = window(json["week"], used: "used", resets: "resetsAt")
         result.updatedAt = (json["updatedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
@@ -175,9 +194,10 @@ final class UsageLimitsManager: ObservableObject {
     }
 
     private func reloadClaude() {
-        guard Defaults[.showUsageLimits] else { return }
-        let claude = Self.readClaude()
-        guard let index = limits.firstIndex(where: { $0.id == "claude" }), limits[index] != claude else { return }
+        guard Defaults[.showUsageLimits], let claude = Self.readClaudeFile() else { return }
+        guard let index = limits.firstIndex(where: { $0.id == "claude" }),
+              (limits[index].updatedAt ?? .distantPast) < (claude.updatedAt ?? .distantPast)
+        else { return }
         limits[index] = claude
         checkWarnings()
     }

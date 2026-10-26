@@ -244,6 +244,15 @@ final class XPCHelperClient: NSObject {
 
     // MARK: - Subscription limits
 
+    nonisolated func claudeUsage() async -> Data? {
+        do {
+            let service = await MainActor.run { ensureRemoteService() }
+            return try await service.withContinuation { service, continuation in
+                service.claudeUsage { continuation.resume(returning: $0) }
+            }
+        } catch { return nil }
+    }
+
     nonisolated func codexLimits(home: String) async -> Data? {
         do {
             let service = await MainActor.run { ensureRemoteService() }
