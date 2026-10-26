@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// Width of each side "wing" around the physical notch for compact live activities.
-let closedNotchSideWidth: CGFloat = 130
+let closedNotchSideWidth: CGFloat = 165
 
 /// Compact live activity layout for the closed notch: content to the left and right of the physical notch.
 struct ClosedNotchSidesView<Leading: View, Trailing: View>: View {
