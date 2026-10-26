@@ -77,6 +77,7 @@ class CalendarManager: ObservableObject {
         ) { [weak self] _ in
             Task {
                 await self?.reloadCalendars()
+                await self?.updateEvents()
                 await self?.refreshUpcomingEvent()
             }
         }
@@ -167,6 +168,7 @@ class CalendarManager: ObservableObject {
         Defaults[.calendarSelectionState] = selectionState
         updateSelectedCalendars()
         await updateEvents()
+        await refreshUpcomingEvent()
     }
 
     static func startOfDay(_ date: Date) -> Date {
@@ -179,12 +181,15 @@ class CalendarManager: ObservableObject {
     }
 
     private func updateEvents() async {
+        let day = currentWeekStartDate
         let calendarIDs = selectedCalendars.map { $0.id }
         let eventsResult = await calendarService.events(
-            from: currentWeekStartDate,
-            to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
+            from: day,
+            to: Calendar.current.date(byAdding: .day, value: 1, to: day)!,
             calendars: calendarIDs
         )
+        // A slower query for a day the user already left must not overwrite the new day.
+        guard day == currentWeekStartDate else { return }
         self.events = eventsResult
     }
 }

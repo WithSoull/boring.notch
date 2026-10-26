@@ -25,6 +25,7 @@ struct EventListView: View {
     }
 
     private func scrollToRelevantEvent(proxy: ScrollViewProxy) {
+        guard autoScrollToNextEvent else { return }
         let now = Date()
         // Determine a single target using preferred search order:
         // 1) first non-all-day upcoming/in-progress event
@@ -67,7 +68,8 @@ struct EventListView: View {
             .onAppear {
                 scrollToRelevantEvent(proxy: proxy)
             }
-            .onChange(of: filteredEvents) { _, _ in
+            // Background syncs keep the manual scroll position; only a different set of events (e.g. another day) scrolls.
+            .onChange(of: filteredEvents.map(\.id)) { _, _ in
                 scrollToRelevantEvent(proxy: proxy)
             }
         }

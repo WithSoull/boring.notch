@@ -23,6 +23,9 @@ final class AmphetamineManager: ObservableObject {
         didSet { Defaults[.amphetamineStartedForAgents] = startedForAgents }
     }
 
+    /// A start command is in flight; repeated agent events must not queue more starts.
+    private(set) var isStarting = false
+
     private let scriptQueue = DispatchQueue(label: "boringNotch.amphetamine")
     private var pollTimer: Timer?
 
@@ -53,8 +56,9 @@ final class AmphetamineManager: ObservableObject {
                 end if
                 return "-1"
             end tell
-            """) { [weak self] result in
-            guard let self else { return }
+            """) { [weak self] result, succeeded in
+            // A failed status query says nothing about the session: keep the current state and ownership.
+            guard let self, succeeded else { return }
             let remaining = Int(result ?? "-1") ?? -1
             self.apply(active: remaining >= 0, remaining: max(remaining, 0))
         }
@@ -64,15 +68,18 @@ final class AmphetamineManager: ObservableObject {
     func start(minutes: Int? = nil, forAgents: Bool = false) {
         let options = minutes.map { "{duration:\($0), interval:minutes, displaySleepAllowed:true}" }
             ?? "{duration:0, interval:0, displaySleepAllowed:true}"
-        run("tell application id \"\(Self.bundleID)\" to start new session with options \(options)") { [weak self] _ in
-            self?.startedForAgents = forAgents
-            self?.refresh()
+        isStarting = true
+        run("tell application id \"\(Self.bundleID)\" to start new session with options \(options)") { [weak self] _, succeeded in
+            guard let self else { return }
+            self.isStarting = false
+            if succeeded { self.startedForAgents = forAgents }
+            self.refresh()
         }
     }
 
     func stop() {
-        run("tell application id \"\(Self.bundleID)\" to end session") { [weak self] _ in
-            self?.startedForAgents = false
+        run("tell application id \"\(Self.bundleID)\" to end session") { [weak self] _, succeeded in
+            if succeeded { self?.startedForAgents = false }
             self?.refresh()
         }
     }
@@ -87,15 +94,16 @@ final class AmphetamineManager: ObservableObject {
         if timeRemaining != remaining { timeRemaining = remaining }
     }
 
-    private func run(_ source: String, completion: @escaping @Sendable @MainActor (String?) -> Void) {
+    private func run(_ source: String, completion: @escaping @Sendable @MainActor (_ output: String?, _ succeeded: Bool) -> Void) {
         scriptQueue.async {
             var error: NSDictionary?
             let output = NSAppleScript(source: source)?.executeAndReturnError(&error)
             if let error {
                 NSLog("Amphetamine AppleScript error: \(error)")
             }
-            let value = error == nil ? output?.stringValue : nil
-            Task { @MainActor in completion(value) }
+            let succeeded = error == nil
+            let value = succeeded ? output?.stringValue : nil
+            Task { @MainActor in completion(value, succeeded) }
         }
     }
 }

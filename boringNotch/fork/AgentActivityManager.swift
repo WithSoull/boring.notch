@@ -31,6 +31,8 @@ struct AgentSession: Identifiable, Equatable {
     /// The agent's own session id (Claude Code session id / Codex thread id).
     let sessionID: String
     let source: Source
+    /// Claude desktop app's own session id ("local_…"); its deep links don't accept the CLI session id.
+    var chatID: String
     var cwd: String
     var title: String
     /// Last tool the agent used while working, e.g. "Bash".
@@ -55,8 +57,9 @@ struct AgentSession: Identifiable, Equatable {
 
     /// Deep link that opens this chat in the agent's desktop app.
     var chatURL: URL? {
-        guard sessionID != "unknown" else { return nil }
-        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sessionID
+        let id = chatID.isEmpty ? sessionID : chatID
+        guard id != "unknown" else { return nil }
+        let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id
         switch source {
         case .claude: return URL(string: "claude://code/continue?session=\(encoded)&source=boringnotch")
         case .codex: return URL(string: "codex://threads/\(encoded)")
@@ -75,6 +78,7 @@ final class AgentActivityManager: ObservableObject {
     private var bannerTask: Task<Void, Never>?
     private var amphetamineStopTask: Task<Void, Never>?
     private var cleanupTimer: Timer?
+    private var autoAmphetamineObserver: AnyCancellable?
 
     private let finishedLifetime: TimeInterval = 30 * 60
     /// A working session that sends nothing for this long was most likely interrupted.
@@ -85,6 +89,9 @@ final class AgentActivityManager: ObservableObject {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             Task { @MainActor in AgentActivityManager.shared.cleanup() }
         }
+        autoAmphetamineObserver = Defaults.publisher(.autoAmphetamineForAgents, options: [])
+            .receive(on: DispatchQueue.main)
+            .sink { _ in Task { @MainActor in AgentActivityManager.shared.updateAmphetamine() } }
     }
 
     /// Call at launch: ends an Amphetamine session a previous run started for agents that are gone now.
@@ -117,11 +124,16 @@ final class AgentActivityManager: ObservableObject {
             source: source,
             cwd: Self.decodeBase64URL(query["cwd"] ?? "") ?? "",
             title: Self.decodeBase64URL(query["title"] ?? "") ?? "",
-            tool: Self.decodeBase64URL(query["tool"] ?? "") ?? ""
+            tool: Self.decodeBase64URL(query["tool"] ?? "") ?? "",
+            chatID: query["chat"] ?? "",
+            notificationType: query["ntype"] ?? ""
         )
     }
 
-    private func apply(event: String, sessionID: String, source: AgentSession.Source, cwd: String, title: String, tool: String) {
+    private func apply(
+        event: String, sessionID: String, source: AgentSession.Source, cwd: String, title: String, tool: String,
+        chatID: String, notificationType: String
+    ) {
         let id = "\(source.rawValue)-\(sessionID)"
         let existing = sessions.firstIndex { $0.id == id }
 
@@ -135,9 +147,15 @@ final class AgentActivityManager: ObservableObject {
             showsBanner = true
         case "Interrupt":
             newState = .finished
-        case "Notification", "PermissionRequest":
-            // Idle reminders arrive after Stop; only a running session can be waiting for permission.
-            guard let existing, sessions[existing].state != .finished else { return }
+        case "PermissionRequest":
+            // An explicit request: also creates the session if the app didn't see it start (e.g. after a relaunch).
+            newState = .waiting
+            showsBanner = true
+        case "Notification":
+            // Claude's permission prompts are explicit too; idle reminders arrive after Stop and only update running sessions.
+            if notificationType != "permission_prompt" {
+                guard let existing, sessions[existing].state != .finished else { return }
+            }
             newState = .waiting
             showsBanner = true
         case "SessionEnd":
@@ -149,7 +167,11 @@ final class AgentActivityManager: ObservableObject {
         }
 
         var session = existing.map { sessions[$0] }
-            ?? AgentSession(sessionID: sessionID, source: source, cwd: cwd, title: title, tool: "", state: newState, stateSince: Date(), updatedAt: Date())
+            ?? AgentSession(
+                sessionID: sessionID, source: source, chatID: chatID, cwd: cwd, title: title, tool: "",
+                state: newState, stateSince: Date(), updatedAt: Date()
+            )
+        if !chatID.isEmpty { session.chatID = chatID }
         if !cwd.isEmpty { session.cwd = cwd }
         if !title.isEmpty { session.title = title }
         if newState == .working {
@@ -192,8 +214,9 @@ final class AgentActivityManager: ObservableObject {
 
     private func cleanup() {
         let now = Date()
+        // Only working sessions send heartbeats; a session waiting for the user stays waiting.
         for index in sessions.indices
-        where sessions[index].state != .finished && now.timeIntervalSince(sessions[index].updatedAt) > staleWorkingTimeout {
+        where sessions[index].state == .working && now.timeIntervalSince(sessions[index].updatedAt) > staleWorkingTimeout {
             sessions[index].state = .finished
             sessions[index].stateSince = now
         }
@@ -202,14 +225,21 @@ final class AgentActivityManager: ObservableObject {
     }
 
     private func updateAmphetamine() {
-        guard Defaults[.autoAmphetamineForAgents] else { return }
         let amphetamine = AmphetamineManager.shared
         guard amphetamine.isInstalled else { return }
+
+        guard Defaults[.autoAmphetamineForAgents] else {
+            // Turning the automation off ends the session it started; a manual session is left alone.
+            amphetamineStopTask?.cancel()
+            amphetamineStopTask = nil
+            if amphetamine.startedForAgents && amphetamine.isActive { amphetamine.stop() }
+            return
+        }
 
         if hasWorkingSessions {
             amphetamineStopTask?.cancel()
             amphetamineStopTask = nil
-            if !amphetamine.isActive {
+            if !amphetamine.isActive && !amphetamine.isStarting {
                 amphetamine.start(forAgents: true)
             }
         } else if amphetamine.startedForAgents, amphetamineStopTask == nil {
@@ -217,7 +247,7 @@ final class AgentActivityManager: ObservableObject {
                 try? await Task.sleep(for: self?.amphetamineGracePeriod ?? .seconds(120))
                 guard let self, !Task.isCancelled else { return }
                 self.amphetamineStopTask = nil
-                if !self.hasWorkingSessions && AmphetamineManager.shared.startedForAgents {
+                if Defaults[.autoAmphetamineForAgents] && !self.hasWorkingSessions && AmphetamineManager.shared.startedForAgents {
                     AmphetamineManager.shared.stop()
                 }
             }
