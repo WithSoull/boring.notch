@@ -6,10 +6,12 @@
 //
 
 import Defaults
+import KeyboardShortcuts
 import SwiftUI
 
 struct SnippetsSettings: View {
     @Default(.snippets) private var snippets
+    @Default(.clipboardHistoryEnabled) private var clipboardHistoryEnabled
 
     var body: some View {
         Form {
@@ -41,6 +43,20 @@ struct SnippetsSettings: View {
                 Text("Snippets")
             } footer: {
                 Text("Shown in the Snippets tab of the notch. Click a snippet there to copy its text.")
+            }
+
+            Section {
+                Defaults.Toggle(key: .clipboardHistoryEnabled) {
+                    Text("Show recent clipboard text")
+                }
+                .onChange(of: clipboardHistoryEnabled) { _, enabled in
+                    enabled ? ClipboardHistoryManager.shared.start() : ClipboardHistoryManager.shared.stop()
+                }
+                KeyboardShortcuts.Recorder("Open Snippets tab:", name: .openSnippets)
+            } header: {
+                Text("Clipboard")
+            } footer: {
+                Text("Keeps the last 20 copied texts in memory only; they are gone after a restart. Passwords copied from password managers are skipped.")
             }
         }
         .accentColor(.effectiveAccent)

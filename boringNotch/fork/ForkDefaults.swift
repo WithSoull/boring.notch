@@ -7,6 +7,7 @@
 
 import Defaults
 import Foundation
+import KeyboardShortcuts
 
 struct Snippet: Codable, Hashable, Identifiable, Defaults.Serializable {
     var id = UUID()
@@ -25,6 +26,7 @@ extension Defaults.Keys {
 
     // Snippets
     static let snippets = Key<[Snippet]>("snippets", default: [])
+    static let clipboardHistoryEnabled = Key<Bool>("clipboardHistoryEnabled", default: true)
 
     // Agents
     static let showAgentBanners = Key<Bool>("showAgentBanners", default: true)
@@ -34,4 +36,8 @@ extension Defaults.Keys {
 
     // Shelf
     static let copyPathOnShelfDrop = Key<Bool>("copyPathOnShelfDrop", default: false)
+}
+
+extension KeyboardShortcuts.Name {
+    static let openSnippets = Self("openSnippets", default: .init(.v, modifiers: [.control, .command]))
 }

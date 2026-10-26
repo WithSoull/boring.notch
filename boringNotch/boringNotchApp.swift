@@ -371,6 +371,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        ClipboardHistoryManager.shared.start()
+
+        KeyboardShortcuts.onKeyDown(for: .openSnippets) { [weak self] in
+            guard let self else { return }
+            let mouseLocation = NSEvent.mouseLocation
+            var viewModel = self.vm
+            if Defaults[.showOnAllDisplays],
+               let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
+               let uuid = screen.displayUUID, let screenViewModel = self.viewModels[uuid] {
+                viewModel = screenViewModel
+            }
+            self.closeNotchTask?.cancel()
+            BoringViewCoordinator.shared.currentView = .snippets
+            viewModel.open()
+            // Close again unless the pointer moved into the notch.
+            self.closeNotchTask = Task { [weak viewModel] in
+                try? await Task.sleep(for: .seconds(6))
+                guard !Task.isCancelled, let viewModel, !viewModel.isMouseHovering() else { return }
+                viewModel.close()
+            }
+        }
+
         KeyboardShortcuts.onKeyDown(for: .openSettings) {
             DispatchQueue.main.async {
                 SettingsWindowController.shared.showWindow()
