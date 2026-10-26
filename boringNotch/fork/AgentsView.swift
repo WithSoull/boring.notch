@@ -169,9 +169,9 @@ struct AgentSessionRow: View {
         HStack(spacing: 8) {
             AgentStateIcon(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
-                Text("\(session.displayTitle) — \(actionText)")
+                (Text(session.displayTitle).foregroundStyle(.white)
+                    + Text(" — \(session.statusLabel)").foregroundStyle(session.state.color))
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text("\(session.project) · \(session.source.displayName)")
@@ -207,38 +207,6 @@ struct AgentSessionRow: View {
         .onTapGesture { AgentActivityManager.shared.openChat(session) }
         .help("Open chat in \(session.source.displayName)")
     }
-
-    private var actionText: String {
-        switch session.state {
-        case .working:
-            return session.tool.isEmpty ? String(localized: "working") : session.tool
-        case .waiting:
-            return String(localized: "needs your input")
-        case .finished:
-            return String(localized: "done")
-        }
-    }
-}
-
-struct AgentStateIcon: View {
-    let state: AgentSession.State
-
-    var body: some View {
-        switch state {
-        case .working:
-            ProgressView()
-                .controlSize(.mini)
-                .frame(width: 14)
-        case .waiting:
-            Image(systemName: "exclamationmark.bubble.fill")
-                .foregroundStyle(.yellow)
-                .frame(width: 14)
-        case .finished:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .frame(width: 14)
-        }
-    }
 }
 
 private struct StatBar: View {
@@ -271,7 +239,7 @@ private struct StatBar: View {
     }
 }
 
-/// Closed-notch banner: an agent finished or needs input.
+/// Closed-notch banner: an agent finished or needs input. Layout: icon + project | status.
 struct AgentBannerActivity: View {
     let session: AgentSession
 
@@ -281,45 +249,25 @@ struct AgentBannerActivity: View {
             Text(session.project)
                 .truncationMode(.tail)
         } trailing: {
-            Text(session.state == .waiting ? String(localized: "waiting") : String(localized: "done"))
-                .foregroundStyle(session.state == .waiting ? .yellow : .green)
-            Text(session.source.displayName)
-                .foregroundStyle(.gray)
+            Text(session.statusLabel)
+                .foregroundStyle(session.state.color)
         }
     }
 }
 
-/// Closed-notch activity while agents are working (shown when no music is playing).
+/// Closed-notch activity while agents are working (shown when no music is playing). Same layout as the banner.
 struct WorkingAgentsActivity: View {
     let sessions: [AgentSession]
 
     var body: some View {
         ClosedNotchSidesView {
-            ProgressView()
-                .controlSize(.mini)
+            AgentStateIcon(state: .working)
             Text(sessions.first?.project ?? "")
                 .truncationMode(.tail)
         } trailing: {
-            Text(sessions.count > 1 ? String(localized: "\(sessions.count) agents") : String(localized: "working"))
-                .foregroundStyle(.gray)
-            Image(systemName: "terminal")
-                .foregroundStyle(.green)
+            Text(sessions.count > 1 ? String(localized: "\(sessions.count) working") : sessions.first?.statusLabel ?? "")
+                .foregroundStyle(AgentSession.State.working.color)
         }
-    }
-}
-
-/// Small pulsing dot overlaid on the music album art while agents are working.
-struct WorkingAgentsDot: View {
-    @State private var pulse = false
-
-    var body: some View {
-        Circle()
-            .fill(.green)
-            .frame(width: 7, height: 7)
-            .overlay(Circle().stroke(.black, lineWidth: 1.5))
-            .opacity(pulse ? 0.35 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
-            .onAppear { pulse = true }
     }
 }
 

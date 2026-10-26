@@ -450,7 +450,7 @@ struct ContentView: View {
                 )
                 .overlay(alignment: .topTrailing) {
                     if !workingAgents.isEmpty {
-                        WorkingAgentsDot()
+                        AgentWorkingDot(outlined: true)
                             .offset(x: 3, y: -3)
                     }
                 }
